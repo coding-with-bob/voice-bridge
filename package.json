@@ -1,0 +1,23 @@
+{
+  "name": "hey-bob",
+  "version": "0.1.0",
+  "description": "Hey Bob voice bridge: bob (router) and bobsay (TTS) CLIs over the Omnigent session pool",
+  "type": "module",
+  "private": true,
+  "bin": {
+    "bob": "./src/cli/bob.ts",
+    "bobsay": "./src/cli/bobsay.ts"
+  },
+  "scripts": {
+    "test": "bun test",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "commander": "^14.0.2",
+    "zod": "^4.1.12"
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "typescript": "^5.9.3"
+  }
+}
