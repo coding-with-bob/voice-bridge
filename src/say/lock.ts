@@ -1,0 +1,130 @@
+/**
+ * A FIFO file lock, so two sessions never talk over each other.
+ *
+ * Each caller drops a ticket into the lock directory named by arrival time; the
+ * lexicographically smallest ticket holds the lock. Arrival order is preserved, which
+ * plain exclusive-create locking does not give you — the sentence you triggered first
+ * is the sentence you hear first.
+ *
+ * Crash safety: a ticket whose owner died stops being refreshed and is pruned as stale,
+ * so a killed `bobsay` cannot wedge the queue. Live holders and live waiters both
+ * heartbeat their own ticket, so "stale" only ever means "nobody is behind this".
+ */
+import { mkdirSync, readdirSync, statSync, unlinkSync, utimesSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
+
+export class LockTimeoutError extends Error {
+  override name = "LockTimeoutError";
+}
+
+export interface LockHandle {
+  release(): void;
+}
+
+export interface LockOptions {
+  /** How long a ticket may go unrefreshed before it is considered abandoned. */
+  staleMs?: number;
+  /** How often the queue is re-examined. */
+  pollMs?: number;
+  /** How long to wait for the lock before giving up. */
+  timeoutMs?: number;
+}
+
+const DEFAULTS = { staleMs: 60_000, pollMs: 25, timeoutMs: 120_000 } as const;
+const TICKET_SUFFIX = ".ticket";
+
+/** Distinguishes tickets taken within the same millisecond by the same process. */
+let sequence = 0;
+
+export async function acquireLock(lockDir: string, options: LockOptions = {}): Promise<LockHandle> {
+  const staleMs = options.staleMs ?? DEFAULTS.staleMs;
+  const pollMs = options.pollMs ?? DEFAULTS.pollMs;
+  const timeoutMs = options.timeoutMs ?? DEFAULTS.timeoutMs;
+
+  mkdirSync(lockDir, { recursive: true });
+  const ticket = mintTicketName();
+  const ticketPath = join(lockDir, ticket);
+  writeFileSync(ticketPath, "");
+
+  const deadline = Date.now() + timeoutMs;
+  try {
+    while (!isHolder(lockDir, ticket, staleMs)) {
+      if (Date.now() >= deadline) {
+        throw new LockTimeoutError(
+          `Timed out after ${timeoutMs}ms waiting for the playback lock in ${lockDir}.`,
+        );
+      }
+      touch(ticketPath); // a waiting ticket is a live ticket
+      await sleep(pollMs);
+    }
+  } catch (error) {
+    remove(ticketPath);
+    throw error;
+  }
+
+  return startHolding(ticketPath, staleMs);
+}
+
+function mintTicketName(): string {
+  const stamp = String(Date.now()).padStart(15, "0");
+  const pid = String(process.pid).padStart(7, "0");
+  const seq = String(sequence++).padStart(6, "0");
+  return `${stamp}-${pid}-${seq}${TICKET_SUFFIX}`;
+}
+
+function isHolder(lockDir: string, ticket: string, staleMs: number): boolean {
+  const cutoff = Date.now() - staleMs;
+  const live: string[] = [];
+  for (const name of readdirSync(lockDir)) {
+    if (!name.endsWith(TICKET_SUFFIX)) continue;
+    if (name !== ticket && isAbandoned(join(lockDir, name), cutoff)) {
+      remove(join(lockDir, name));
+      continue;
+    }
+    live.push(name);
+  }
+  return live.sort()[0] === ticket;
+}
+
+function isAbandoned(path: string, cutoff: number): boolean {
+  try {
+    return statSync(path).mtimeMs < cutoff;
+  } catch {
+    return false; // already gone; nothing to prune
+  }
+}
+
+function startHolding(ticketPath: string, staleMs: number): LockHandle {
+  const heartbeat = setInterval(() => touch(ticketPath), Math.max(10, Math.floor(staleMs / 3)));
+  heartbeat.unref?.();
+  let released = false;
+  return {
+    release() {
+      if (released) return;
+      released = true;
+      clearInterval(heartbeat);
+      remove(ticketPath);
+    },
+  };
+}
+
+function touch(path: string): void {
+  try {
+    const now = new Date();
+    utimesSync(path, now, now);
+  } catch {
+    // The ticket was pruned or the directory vanished; the next poll settles it.
+  }
+}
+
+function remove(path: string): void {
+  try {
+    unlinkSync(path);
+  } catch {
+    // Already gone.
+  }
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
