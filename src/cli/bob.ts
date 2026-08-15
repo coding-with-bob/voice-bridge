@@ -13,6 +13,7 @@ import { route, type RouteResult } from "../router/route.ts";
 import { claudeCliCall } from "../router/model.ts";
 import { readConvention, ConventionError } from "../router/convention.ts";
 import { listProjectDirs, PROJECTS_ROOT } from "../router/projects.ts";
+import { collectLogEvents, renderLogEvent, ALL_SOURCES } from "../router/log-view.ts";
 import { speak } from "../say/speak.ts";
 import { sayEngine } from "../say/engines/say.ts";
 import { elevenLabsEngine } from "../say/engines/elevenlabs.ts";
@@ -92,10 +93,42 @@ program
 
 program
   .command("log")
-  .description("tail the spoken, decision and gc logs")
-  .option("--reachbacks", "show only reach-backs to sessions past the candidate window")
+  .description("tail the spoken, decision and gc logs as one timeline")
+  .option("-n, --count <n>", "how many events to show (default 20)", "20")
+  .option("--spoken", "only what was said out loud")
+  .option("--decisions", "only routing decisions")
+  .option("--gc", "only what the sweep stopped")
+  .option("--reachbacks", "only reach-backs to sessions past the candidate window")
   .option("--json", "emit as JSON")
-  .action(() => notYet("bob log", "M4"));
+  .action(
+    async (options: {
+      count: string;
+      spoken?: boolean;
+      decisions?: boolean;
+      gc?: boolean;
+      reachbacks?: boolean;
+      json?: boolean;
+    }) => {
+      try {
+        const { config, paths } = loadConfig();
+        const chosen = ALL_SOURCES.filter((source) => options[source] === true);
+        const events = collectLogEvents({
+          homeDir: config.home_dir,
+          paths,
+          ...(chosen.length > 0 ? { sources: chosen } : {}),
+          ...(options.reachbacks === true ? { reachbacksOnly: true } : {}),
+          limit: Math.max(1, Number(options.count) || 20),
+        });
+
+        if (options.json) console.log(JSON.stringify(events, null, 2));
+        else if (events.length === 0) console.log("nothing logged yet");
+        else for (const event of events) console.log(renderLogEvent(event));
+      } catch (error) {
+        console.error(`bob log: ${error instanceof Error ? error.message : String(error)}`);
+        process.exit(isSetupError(error) ? 2 : 1);
+      }
+    },
+  );
 
 program
   .command("gc")
