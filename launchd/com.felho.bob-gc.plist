@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Optional daily `bob gc` sweep. Documented, deliberately NOT auto-installed — a background
+  job that stops sessions is something you should switch on knowingly.
+
+  Install:
+    cp launchd/com.felho.bob-gc.plist ~/Library/LaunchAgents/
+    launchctl load ~/Library/LaunchAgents/com.felho.bob-gc.plist
+  Remove:
+    launchctl unload ~/Library/LaunchAgents/com.felho.bob-gc.plist
+
+  The hour is 04:37 rather than 04:00 on purpose: nothing else on this machine wakes at an
+  odd minute, so the sweep never contends with the tidy-on-the-hour crowd.
+-->
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.felho.bob-gc</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>/Users/felho/.local/bin/bob</string>
+    <string>gc</string>
+  </array>
+
+  <key>EnvironmentVariables</key>
+  <dict>
+    <!-- launchd starts with almost no PATH; `bob`'s shebang needs bun on it. -->
+    <key>PATH</key>
+    <string>/Users/felho/.local/bin:/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+  </dict>
+
+  <key>StartCalendarInterval</key>
+  <dict>
+    <key>Hour</key>
+    <integer>4</integer>
+    <key>Minute</key>
+    <integer>37</integer>
+  </dict>
+
+  <key>StandardOutPath</key>
+  <string>/Users/felho/bob/logs/gc-launchd.log</string>
+  <key>StandardErrorPath</key>
+  <string>/Users/felho/bob/logs/gc-launchd.log</string>
+
+  <key>RunAtLoad</key>
+  <false/>
+</dict>
+</plist>

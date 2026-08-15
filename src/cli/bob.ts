@@ -14,6 +14,8 @@ import { claudeCliCall } from "../router/model.ts";
 import { readConvention, ConventionError } from "../router/convention.ts";
 import { listProjectDirs, PROJECTS_ROOT } from "../router/projects.ts";
 import { collectLogEvents, renderLogEvent, ALL_SOURCES } from "../router/log-view.ts";
+import { runGc, type GcResult } from "../gc/run.ts";
+import { appendGcEntry } from "../gc/log.ts";
 import { speak } from "../say/speak.ts";
 import { sayEngine } from "../say/engines/say.ts";
 import { elevenLabsEngine } from "../say/engines/elevenlabs.ts";
@@ -79,6 +81,8 @@ program
         configSource: source,
         conventionFile: paths.conventionFile,
         readListenHosts,
+        modelCall: claudeCliCall,
+        routerModel: config.router_model,
         spawn: options.quick !== true,
       });
 
@@ -133,9 +137,28 @@ program
 program
   .command("gc")
   .description("stop sessions idle beyond gc_idle_hours (stop only — never delete)")
-  .option("--dry-run", "list what would be stopped")
+  .option("--dry-run", "list what would be stopped, without stopping anything")
   .option("--json", "emit as JSON")
-  .action(() => notYet("bob gc", "M5"));
+  .action(async (options: { dryRun?: boolean; json?: boolean }) => {
+    try {
+      const { config, paths } = loadConfig();
+      const result = await runGc({
+        client: new OmnigentClient({ baseUrl: config.omnigent_url }),
+        idleHours: config.gc_idle_hours,
+        dryRun: options.dryRun === true,
+      });
+
+      // A dry run is logged too: knowing what a proposed sweep would have touched is
+      // worth a line, and it is the record you check before running it for real.
+      for (const entry of result.entries) appendGcEntry(paths.gcLog, entry);
+
+      if (options.json) console.log(JSON.stringify(result, null, 2));
+      else printGcResult(result, options.dryRun === true, config.gc_idle_hours);
+    } catch (error) {
+      console.error(`bob gc: ${error instanceof Error ? error.message : String(error)}`);
+      process.exit(isSetupError(error) ? 2 : 1);
+    }
+  });
 
 await program.parseAsync();
 
@@ -153,6 +176,25 @@ function printRouteResult(result: RouteResult, dryRun: boolean): void {
   console.log(`${dryRun ? "would say" : "said"}: ${result.spoken}`);
   if (result.fallback_reason !== undefined) console.log(`reason: ${result.fallback_reason}`);
   console.log(`decided in ${result.latency_ms}ms · context: ${result.context_digest}`);
+}
+
+function printGcResult(result: GcResult, dryRun: boolean, idleHours: number): void {
+  if (result.entries.length === 0) {
+    console.log(`nothing idle beyond ${idleHours}h among ${result.scanned} sessions`);
+    return;
+  }
+  for (const entry of result.entries) {
+    const outcome = entry.dry_run
+      ? "would stop"
+      : entry.stopped
+        ? "stopped"
+        : `could not stop (${entry.error ?? "unknown"})`;
+    console.log(
+      `${outcome} ${entry.session_id} · idle ${entry.idle_hours.toFixed(1)}h · ${entry.title ?? "(untitled)"}`,
+    );
+  }
+  const verb = dryRun ? "would be stopped" : "stopped";
+  console.log(`\n${result.entries.length} of ${result.scanned} sessions ${verb}.`);
 }
 
 /** Setup problems (exit 2) need a human; routing problems (exit 1) may be worth retrying. */
