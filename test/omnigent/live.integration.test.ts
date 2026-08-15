@@ -96,18 +96,36 @@ describe.if(serverIsUp)("C4 against the live server — session lifecycle", () =
   );
 });
 
+/**
+ * The timeout message carries what the next person will need.
+ *
+ * This test has been seen to fail intermittently and could not be reproduced on demand,
+ * including under three concurrent runs. An unreproducible failure is only worth what its
+ * error message says, so this one reports which session, how many turns it had, and what
+ * the last one was — enough to tell "the runner never launched" from "it answered something
+ * unexpected" without having to catch it happening.
+ */
 async function waitForAssistantReply(
   sessionId: string,
   timeoutMs: number,
   skipUntilCount = 0,
 ): Promise<string> {
   const deadline = Date.now() + timeoutMs;
+  let lastSeen: { count: number; tail: string } = { count: 0, tail: "(no items)" };
+
   while (Date.now() < deadline) {
     await new Promise((resolve) => setTimeout(resolve, 500));
     const items = await client.sessionItems(sessionId);
+    lastSeen = {
+      count: items.length,
+      tail: items.at(-1) === undefined ? "(no items)" : `${items.at(-1)!.role}: ${items.at(-1)!.text.slice(0, 80)}`,
+    };
     if (items.length <= skipUntilCount) continue;
     const reply = items.slice(skipUntilCount).filter((item) => item.role === "assistant").at(-1);
     if (reply !== undefined) return reply.text;
   }
-  throw new Error(`no assistant reply within ${timeoutMs}ms`);
+  throw new Error(
+    `no assistant reply from ${sessionId} within ${timeoutMs}ms — ` +
+      `${lastSeen.count} items (expected more than ${skipUntilCount}), last was ${lastSeen.tail}`,
+  );
 }

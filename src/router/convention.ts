@@ -52,6 +52,20 @@ export function metadataBlock(sessionId: string): string {
   return `[bob metadata — not part of the request: your session id is ${sessionId}]`;
 }
 
+/** Anything wearing the metadata block's clothes, wherever it appears. */
+const METADATA_BLOCK_SHAPE = /\[bob metadata[^\]]*\]/g;
+
+/**
+ * The block claims to be transport metadata. That claim is only worth something if exactly
+ * one block can ever appear — otherwise a request carrying its own would leave the session
+ * with two session ids and no rule for choosing. It would probably choose right; "probably"
+ * is not what a contract is for, and the failure would be quiet and self-propagating, since
+ * a misattributed ledger line goes on to misroute later utterances.
+ *
+ * So the shape is stripped from the request before ours is prepended. Nothing legitimate is
+ * lost: no real request needs to contain that literal bracket.
+ */
 export function firstMessage(sessionId: string, request: string): string {
-  return `${metadataBlock(sessionId)}\n\n${request}`;
+  const cleaned = request.replace(METADATA_BLOCK_SHAPE, "").replace(/\s+/g, " ").trim();
+  return `${metadataBlock(sessionId)}\n\n${cleaned}`;
 }
