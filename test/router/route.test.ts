@@ -53,6 +53,7 @@ function harness(overrides: Partial<RouteDeps> = {}) {
         created.push(options);
         return { id: "conv_fresh" };
       },
+      sessionItems: async () => [],
     },
     config: { ...DEFAULT_CONFIG, home_dir: home },
     paths: pathsFor(home),
@@ -218,6 +219,7 @@ describe("route — the deterministic fallback", () => {
           throw new Error("502 from the runner");
         },
         createSession: async () => ({ id: "conv_fresh" }),
+        sessionItems: async () => [],
       },
     });
     await expectFallback(deps, spoken, "dispatch failed");
@@ -247,6 +249,7 @@ describe("route — hard failures stay hard", () => {
         },
         postMessage: async () => {},
         createSession: async () => ({ id: "x" }),
+        sessionItems: async () => [],
       },
     });
     await expect(route("do the thing", deps)).rejects.toThrow(RouteError);

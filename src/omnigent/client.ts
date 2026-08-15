@@ -141,11 +141,23 @@ export class OmnigentClient {
     await this.request("DELETE", `/v1/sessions/${encodeURIComponent(sessionId)}`);
   }
 
-  async sessionItems(sessionId: string, options: { limit?: number } = {}): Promise<TextItem[]> {
-    const query = options.limit === undefined ? "" : `?limit=${options.limit}`;
-    return parseTextItems(
-      await this.request("GET", `/v1/sessions/${encodeURIComponent(sessionId)}/items${query}`),
+  /**
+   * `order: "desc"` is what a tier-3 peek needs: the *end* of a conversation, not its
+   * opening. Results are returned chronologically regardless, so callers read them the
+   * way they were spoken.
+   */
+  async sessionItems(
+    sessionId: string,
+    options: { limit?: number; order?: "asc" | "desc" } = {},
+  ): Promise<TextItem[]> {
+    const query = new URLSearchParams();
+    if (options.limit !== undefined) query.set("limit", String(options.limit));
+    if (options.order !== undefined) query.set("order", options.order);
+    const suffix = query.size > 0 ? `?${query}` : "";
+    const items = parseTextItems(
+      await this.request("GET", `/v1/sessions/${encodeURIComponent(sessionId)}/items${suffix}`),
     );
+    return options.order === "desc" ? items.reverse() : items;
   }
 
   async listAgents(): Promise<AgentSummary[]> {

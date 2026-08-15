@@ -110,6 +110,8 @@ export const DecisionLogEntrySchema = z.object({
   executed: z.boolean(),
   /** `continue` to a session inactive beyond the candidate window. */
   reachback: z.boolean(),
+  /** Why that session: the model's own reason, or the ledger query that surfaced it. */
+  reachback_reason: z.string().optional(),
   /** A tier-3 transcript peek round happened. */
   peeked: z.boolean(),
   /** The deterministic fallback fired (schema, timeout, error or executability failure). */

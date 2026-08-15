@@ -21,6 +21,8 @@ const context = (overrides: Partial<RoutingContext> = {}): RoutingContext => ({
     minutes_ago: 4,
     within_followup_window: true,
   },
+  ledger_matches: [],
+  peeks: [],
   projects_root: "/Users/felho/dev",
   project_dirs: ["craft", "confpipeline"],
   home_dir: "/Users/felho/bob",
@@ -37,7 +39,15 @@ describe("SYSTEM_PROMPT — the discipline is stated, not implied", () => {
   });
 
   test("fixes the deliberation order", () => {
-    const order = ["FOLLOW-UP", "CONTENT MATCH", "NAMED PROJECT", "HOME", "CLARIFY"];
+    const order = [
+      "FOLLOW-UP",
+      "CONTENT MATCH",
+      "PEEK",
+      "LEDGER LOOKUP",
+      "NAMED PROJECT",
+      "HOME",
+      "CLARIFY",
+    ];
     const positions = order.map((step) => SYSTEM_PROMPT.indexOf(step));
     expect(positions.every((position) => position >= 0)).toBe(true);
     expect([...positions].sort((a, b) => a - b)).toEqual(positions);
@@ -106,6 +116,67 @@ describe("buildUserPrompt", () => {
     const prompt = buildUserPrompt(context({ candidates: [], most_recent: null }), "x", NOW);
     expect(prompt).toContain("(none — the pool is empty)");
     expect(prompt).toContain("MOST RECENT INTERACTION: none");
+  });
+
+  test("says nothing about peeks or the ledger until a round has actually happened", () => {
+    const prompt = buildUserPrompt(context(), "x", NOW);
+    expect(prompt).not.toContain("FOUND IN THE SPOKEN LEDGER");
+    expect(prompt).not.toContain("TRANSCRIPT EXTRACTS");
+  });
+
+  test("renders ledger matches with the lines that surfaced them", () => {
+    const prompt = buildUserPrompt(
+      context({
+        ledger_matches: [
+          {
+            id: "july",
+            title: "subtitle work",
+            workspace: "/Users/felho/dev/craft",
+            status: "idle",
+            minutes_since_active: 54_000,
+            spoken_tail: [],
+            matched_lines: ["The subtitle pipeline is done."],
+          },
+        ],
+      }),
+      "that subtitle thing from July",
+      NOW,
+    );
+    expect(prompt).toContain("FOUND IN THE SPOKEN LEDGER");
+    expect(prompt).toContain("older than the candidate window");
+    expect(prompt).toContain("id: july");
+    expect(prompt).toContain('matched: "The subtitle pipeline is done."');
+  });
+
+  test("renders peek extracts and closes the door on a second round", () => {
+    const prompt = buildUserPrompt(
+      context({
+        peeks: [
+          {
+            session_id: "s1",
+            turns: [
+              { role: "user", text: "fix the timing" },
+              { role: "assistant", text: "Timing fixed." },
+            ],
+          },
+        ],
+      }),
+      "the other one too",
+      NOW,
+    );
+    expect(prompt).toContain("TRANSCRIPT EXTRACTS");
+    expect(prompt).toContain("user: fix the timing");
+    expect(prompt).toContain("assistant: Timing fixed.");
+    expect(prompt).toContain("do not ask for another peek");
+  });
+
+  test("an empty extract says so rather than showing a blank session", () => {
+    const prompt = buildUserPrompt(
+      context({ peeks: [{ session_id: "s1", turns: [] }] }),
+      "x",
+      NOW,
+    );
+    expect(prompt).toContain("(nothing readable in this transcript)");
   });
 
   test("marks a session that has never spoken, rather than leaving a blank", () => {

@@ -12,6 +12,12 @@
  */
 import type { RoutingContext } from "./context.ts";
 
+/**
+ * Bumped whenever the wording changes. The live regression run records it next to the model
+ * id, so a table result can be attributed to a specific prompt rather than to "the router".
+ */
+export const PROMPT_VERSION = "2026-08-15.2";
+
 export const SYSTEM_PROMPT = `You are the router of a voice bridge. A person speaks a request out loud; your only job is to decide WHERE it goes.
 
 You address. You never interpret the domain. Do not answer the request, do not plan it, do not judge whether it is a good idea, do not decide how it should be done. The session you route to has its own context, tools and skills — working out what the request means is its job, not yours.
@@ -22,14 +28,19 @@ Allowed shapes:
 {"action":"continue","session_id":"<an id from the candidate list>","request":"<the request as the session should receive it>","ack":"<one short spoken sentence>"}
 {"action":"new","cwd":"<an absolute directory from the list below>","request":"<the request as the session should receive it>","ack":"<one short spoken sentence>"}
 {"action":"clarify","question":"<one short spoken question>"}
+{"action":"lookup_ledger","query":"<a few distinctive words>"}
+
+Any of the first three may also carry "candidates":[{"session_id":"…","reason":"…"}] — use it when you are genuinely torn between two sessions and want to see how their conversations actually ended before committing.
 
 Deliberate in this order and stop at the first that fits:
 
 1. FOLLOW-UP. If there is a most recent interaction inside the follow-up window, and the utterance does not stand on its own — it refers back ("and the other one too", "yes, do it", "no, the second one"), or continues obviously from what that session just said — continue that session.
 2. CONTENT MATCH. Otherwise, if a candidate session is clearly about the same thing as the utterance — by its title, its workspace, or what it last spoke — continue that session. Recency breaks a tie. A sleeping session is a normal target: a message wakes it and its whole conversation is still there.
-3. NAMED PROJECT. Otherwise, if the utterance names or plainly implies one of the project directories, start a new session there.
-4. HOME. Otherwise, if the request is clear but belongs to no particular project, start a new session in the home directory. The skills available there resolve what to do.
-5. CLARIFY. Only if you genuinely cannot tell where it belongs. Do not clarify to be polite, and never clarify a request merely because it is ambitious — ambition is the session's problem, not yours.
+3. PEEK. Otherwise, if two candidates both plausibly own the utterance and their titles and spoken lines do not settle it, answer with your best guess plus "candidates" naming the two. You will be asked again with an extract from the end of each conversation. This happens at most once, so use it when looking closer would actually change the answer.
+4. LEDGER LOOKUP. Otherwise, if the utterance clearly refers back to earlier work ("that subtitle thing from July", "the session where we fixed the invoices") and no candidate matches, answer {"action":"lookup_ledger","query":"…"} with a few distinctive words. The full spoken ledger is searched — it has no time horizon, unlike the candidate list — and you will be asked again with whatever it found. This also happens at most once.
+5. NAMED PROJECT. Otherwise, if the utterance names or plainly implies one of the project directories, start a new session there.
+6. HOME. Otherwise, if the request is clear but belongs to no particular project, start a new session in the home directory. The skills available there resolve what to do.
+7. CLARIFY. Only if you genuinely cannot tell where it belongs. Do not clarify to be polite, and never clarify a request merely because it is ambitious — ambition is the session's problem, not yours.
 
 Rules that hold in every branch:
 - Use only session ids from the candidate list and only directories from the lists you are given. Never invent either.
@@ -48,6 +59,8 @@ export function buildUserPrompt(context: RoutingContext, utterance: string, now:
     context.candidates.length === 0
       ? "(none — the pool is empty)"
       : context.candidates.map(describeCandidate).join("\n"),
+    ...ledgerSection(context),
+    ...peekSection(context),
     "",
     `PROJECT DIRECTORIES — the absolute path of each is ${context.projects_root}/<name>,`,
     `so a new session in "craft" means cwd ${context.projects_root}/craft:`,
@@ -86,4 +99,42 @@ function describeCandidate(candidate: {
       ? "  (has not spoken)"
       : candidate.spoken_tail.map((line) => `  spoke: "${line}"`).join("\n");
   return `${header}\n${tail}`;
+}
+
+/** Only rendered after a reach-back round: sessions the candidate window had hidden. */
+function ledgerSection(context: RoutingContext): string[] {
+  if (context.ledger_matches.length === 0) return [];
+  return [
+    "",
+    "FOUND IN THE SPOKEN LEDGER (older than the candidate window, but still addressable):",
+    context.ledger_matches
+      .map((match) => {
+        const header =
+          `- id: ${match.id} | idle ${match.minutes_since_active}m | status: ${match.status}` +
+          ` | workspace: ${match.workspace ?? "(none)"} | title: ${match.title ?? "(untitled)"}`;
+        const lines = match.matched_lines.map((line) => `  matched: "${line}"`).join("\n");
+        return `${header}\n${lines}`;
+      })
+      .join("\n"),
+  ];
+}
+
+/** Only rendered after a peek round: how those conversations actually ended. */
+function peekSection(context: RoutingContext): string[] {
+  if (context.peeks.length === 0) return [];
+  return [
+    "",
+    "TRANSCRIPT EXTRACTS (the end of the conversations you were torn between):",
+    context.peeks
+      .map((peek) => {
+        const turns =
+          peek.turns.length === 0
+            ? "  (nothing readable in this transcript)"
+            : peek.turns.map((turn) => `  ${turn.role}: ${turn.text}`).join("\n");
+        return `- session ${peek.session_id}:\n${turns}`;
+      })
+      .join("\n"),
+    "",
+    "You have now seen the extracts. Decide — do not ask for another peek or another lookup.",
+  ];
 }

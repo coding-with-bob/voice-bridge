@@ -16,17 +16,26 @@ import type { BobConfig } from "../contracts/config.ts";
 import type { RouterDecision, DecisionLogEntry } from "../contracts/decision.ts";
 import { parseRouterDecision } from "../contracts/decision.ts";
 import type { OmnigentClient } from "../omnigent/client.ts";
+import type { PoolSession } from "../omnigent/parse.ts";
 import { acquireLock, type LockOptions } from "../say/lock.ts";
-import { buildContext, type RoutingContext } from "./context.ts";
+import {
+  addressableIds,
+  buildContext,
+  buildLedgerMatches,
+  type RoutingContext,
+} from "./context.ts";
 import { appendDecisionEntry, dispatchEvents, readDecisionEntries } from "./decision-log.ts";
 import { checkExecutable, executeDecision, normalizeDecision } from "./execute.ts";
-import { readSpokenEntries } from "./ledger.ts";
+import { grepSpokenLedger, readSpokenEntries } from "./ledger.ts";
+import { fetchPeekExtracts, PEEK_CANDIDATE_LIMIT } from "./peek.ts";
 import { extractJson, type ModelCall } from "./model.ts";
 import { buildUserPrompt, SYSTEM_PROMPT } from "./prompt.ts";
 
 /** Own-tool sessions run without approval friction, per D10. */
 export const PERMISSION_MODE = "bypassPermissions";
 const MODEL_TIMEOUT_MS = 45_000;
+/** Initial ask, plus at most one ledger-lookup round and one peek round. */
+const MAX_MODEL_ROUNDS = 3;
 const DECISION_HISTORY_LIMIT = 200;
 
 /** A setup problem a human has to fix: routing cannot proceed and a retry will not help. */
@@ -35,7 +44,10 @@ export class RouteError extends Error {
 }
 
 export interface RouteDeps {
-  client: Pick<OmnigentClient, "listSessions" | "postMessage" | "createSession">;
+  client: Pick<
+    OmnigentClient,
+    "listSessions" | "postMessage" | "createSession" | "sessionItems"
+  >;
   config: BobConfig;
   paths: BobPaths;
   modelCall: ModelCall;
@@ -57,6 +69,11 @@ export interface RouteResult {
   target_session_id: string | null;
   fallback: boolean;
   fallback_reason?: string;
+  /** A `continue` to a session the candidate window had hidden. */
+  reachback: boolean;
+  reachback_reason?: string;
+  /** A tier-3 transcript peek round happened. */
+  peeked: boolean;
   /** What was said out loud (or would have been, on a dry run). */
   spoken: string;
   latency_ms: number;
@@ -80,8 +97,9 @@ async function routeUnderLock(
   deps: RouteDeps,
   now: () => Date,
 ): Promise<RouteResult> {
-  const context = await gatherContext(deps, now());
-  const attempt = await decide(utterance, context, deps, now());
+  const { context: baseContext, sessions } = await gatherContext(deps, now());
+  const attempt = await decide(utterance, baseContext, sessions, deps, now());
+  const context = attempt.context;
 
   let decision = attempt.decision;
   let fallback = attempt.fallbackReason !== undefined;
@@ -116,6 +134,8 @@ async function routeUnderLock(
     }
   }
 
+  const reach = describeReachback(decision, targetSessionId, attempt, deps);
+
   const entry: DecisionLogEntry = {
     ts: now().toISOString(),
     utterance,
@@ -125,8 +145,9 @@ async function routeUnderLock(
     model: deps.config.router_model,
     target_session_id: targetSessionId,
     executed,
-    reachback: false, // ledger reach-back arrives in M4
-    peeked: false, // tier-3 peek arrives in M4
+    reachback: reach.reachback,
+    ...(reach.reason === undefined ? {} : { reachback_reason: reach.reason }),
+    peeked: attempt.peeked,
     fallback,
     ...(fallbackReason === undefined ? {} : { fallback_reason: fallbackReason }),
   };
@@ -138,14 +159,20 @@ async function routeUnderLock(
     target_session_id: targetSessionId,
     fallback,
     ...(fallbackReason === undefined ? {} : { fallback_reason: fallbackReason }),
+    reachback: reach.reachback,
+    ...(reach.reason === undefined ? {} : { reachback_reason: reach.reason }),
+    peeked: attempt.peeked,
     spoken,
     latency_ms: attempt.latencyMs,
     context_digest: context.digest,
   };
 }
 
-async function gatherContext(deps: RouteDeps, now: Date): Promise<RoutingContext> {
-  let sessions;
+async function gatherContext(
+  deps: RouteDeps,
+  now: Date,
+): Promise<{ context: RoutingContext; sessions: PoolSession[] }> {
+  let sessions: PoolSession[];
   try {
     sessions = await deps.client.listSessions();
   } catch (error) {
@@ -163,69 +190,164 @@ async function gatherContext(deps: RouteDeps, now: Date): Promise<RoutingContext
     readDecisionEntries(deps.paths.decisionLog, { limit: DECISION_HISTORY_LIMIT }),
   );
 
-  return buildContext({
+  // The unfiltered list is kept: a ledger reach-back needs to address sessions the
+  // candidate window has deliberately hidden.
+  return {
     sessions,
-    spoken,
-    dispatches,
-    projectsRoot: deps.projectsRoot,
-    projectDirs: deps.projectDirs,
-    homeDir: deps.config.home_dir,
-    followupWindowMin: deps.config.followup_window_min,
-    candidateWindowDays: deps.config.candidate_window_days,
-    now,
-  });
+    context: buildContext({
+      sessions,
+      spoken,
+      dispatches,
+      projectsRoot: deps.projectsRoot,
+      projectDirs: deps.projectDirs,
+      homeDir: deps.config.home_dir,
+      followupWindowMin: deps.config.followup_window_min,
+      candidateWindowDays: deps.config.candidate_window_days,
+      now,
+    }),
+  };
 }
 
 interface Attempt {
   decision: RouterDecision;
+  /** Cumulative across every round the decision took. */
   latencyMs: number;
+  /** The context that produced the decision — augmented if a round added to it. */
+  context: RoutingContext;
+  peeked: boolean;
+  /** The ledger query, when a reach-back round happened. */
+  lookupQuery?: string;
   /** Set when the deterministic fallback replaced the model's answer. */
   fallbackReason?: string;
 }
 
+/**
+ * Ask, and be willing to be asked back — at most twice.
+ *
+ * The model may request a transcript peek (by naming candidates) or a ledger reach-back
+ * (by answering `lookup_ledger`). Each is granted once per invocation: enough to resolve
+ * a genuine ambiguity, not enough to loop. A second request of the same kind is not an
+ * error to argue with, it is a signal the router is not going to settle — so it becomes
+ * the deterministic fallback, and the person gets a question instead of a wrong guess.
+ */
 async function decide(
   utterance: string,
-  context: RoutingContext,
+  baseContext: RoutingContext,
+  sessions: PoolSession[],
   deps: RouteDeps,
   now: Date,
 ): Promise<Attempt> {
-  const fallbackWith = (reason: string, latencyMs: number): Attempt => ({
+  let context = baseContext;
+  let peeked = false;
+  let lookupQuery: string | undefined;
+  let latencyMs = 0;
+
+  const fallbackWith = (reason: string): Attempt => ({
     decision: fallbackDecision(deps.config),
     latencyMs,
+    context,
+    peeked,
+    ...(lookupQuery === undefined ? {} : { lookupQuery }),
     fallbackReason: reason,
   });
 
-  let response;
-  try {
-    response = await deps.modelCall({
-      system: SYSTEM_PROMPT,
-      user: buildUserPrompt(context, utterance, now),
-      model: deps.config.router_model,
-      timeoutMs: MODEL_TIMEOUT_MS,
-    });
-  } catch (error) {
-    return fallbackWith(`model call failed: ${describe(error)}`, 0);
+  for (let round = 0; round < MAX_MODEL_ROUNDS; round += 1) {
+    let response;
+    try {
+      response = await deps.modelCall({
+        system: SYSTEM_PROMPT,
+        user: buildUserPrompt(context, utterance, now),
+        model: deps.config.router_model,
+        timeoutMs: MODEL_TIMEOUT_MS,
+      });
+    } catch (error) {
+      return fallbackWith(`model call failed: ${describe(error)}`);
+    }
+    latencyMs += response.latencyMs;
+
+    const raw = extractJson(response.raw);
+    if (raw === null) return fallbackWith("model returned no JSON object");
+
+    const parsed = parseRouterDecision(raw);
+    if (!parsed.ok) return fallbackWith(`decision failed the schema (${parsed.reason})`);
+    const decision = normalizeDecision(parsed.decision);
+
+    if (decision.action === "lookup_ledger") {
+      if (lookupQuery !== undefined) {
+        return fallbackWith("a second ledger lookup in one invocation");
+      }
+      lookupQuery = decision.query;
+      context = withLedgerMatches(context, decision.query, sessions, deps, now);
+      continue;
+    }
+
+    if (!peeked && (decision.candidates?.length ?? 0) >= PEEK_CANDIDATE_LIMIT) {
+      peeked = true;
+      const shortlist = decision.candidates!.map((candidate) => candidate.session_id);
+      context = { ...context, peeks: await fetchPeekExtracts(deps.client, shortlist) };
+      continue;
+    }
+
+    const executable = checkExecutable(decision, { candidateIds: addressableIds(context) });
+    if (!executable.ok) return fallbackWith(`decision is not executable: ${executable.reason}`);
+
+    return {
+      decision,
+      latencyMs,
+      context,
+      peeked,
+      ...(lookupQuery === undefined ? {} : { lookupQuery }),
+    };
   }
 
-  const raw = extractJson(response.raw);
-  if (raw === null) {
-    return fallbackWith("model returned no JSON object", response.latencyMs);
-  }
+  return fallbackWith("the router kept asking for more context instead of deciding");
+}
 
-  const parsed = parseRouterDecision(raw);
-  if (!parsed.ok) {
-    return fallbackWith(`decision failed the schema (${parsed.reason})`, response.latencyMs);
-  }
-
-  const decision = normalizeDecision(parsed.decision);
-  const executable = checkExecutable(decision, {
-    candidateIds: new Set(context.candidates.map((candidate) => candidate.id)),
+function withLedgerMatches(
+  context: RoutingContext,
+  query: string,
+  sessions: PoolSession[],
+  deps: RouteDeps,
+  now: Date,
+): RoutingContext {
+  const matches = buildLedgerMatches({
+    hits: grepSpokenLedger(deps.config.home_dir, query),
+    sessions,
+    alreadyOffered: addressableIds(context),
+    now,
   });
-  if (!executable.ok) {
-    return fallbackWith(`decision is not executable: ${executable.reason}`, response.latencyMs);
-  }
+  return { ...context, ledger_matches: [...context.ledger_matches, ...matches] };
+}
 
-  return { decision, latencyMs: response.latencyMs };
+/**
+ * A reach-back is a `continue` to a session the candidate window had hidden. Tagging it is
+ * what makes the pattern visible later: a run of reach-backs to the same transcript says
+ * value is stranded there that should have been produced into files (D9).
+ */
+function describeReachback(
+  decision: RouterDecision,
+  targetSessionId: string | null,
+  attempt: Attempt,
+  deps: RouteDeps,
+): { reachback: boolean; reason?: string } {
+  if (decision.action !== "continue" || targetSessionId === null) return { reachback: false };
+
+  const windowMinutes = deps.config.candidate_window_days * 24 * 60;
+  const fromLedger = attempt.context.ledger_matches.find((match) => match.id === targetSessionId);
+  const stale = attempt.context.candidates.find(
+    (candidate) => candidate.id === targetSessionId && candidate.minutes_since_active > windowMinutes,
+  );
+  if (fromLedger === undefined && stale === undefined) return { reachback: false };
+
+  const modelReason = decision.candidates?.find(
+    (candidate) => candidate.session_id === targetSessionId,
+  )?.reason;
+  const reason =
+    modelReason ??
+    (attempt.lookupQuery === undefined
+      ? undefined
+      : `surfaced by ledger lookup "${attempt.lookupQuery}"`);
+  return { reachback: true, ...(reason === undefined ? {} : { reason }) };
 }
 
 function fallbackDecision(config: BobConfig): RouterDecision {
@@ -240,7 +362,8 @@ function spokenTextOf(decision: RouterDecision): string {
     case "clarify":
       return decision.question;
     case "lookup_ledger":
-      return decision.query; // unreachable: a lookup never survives executability in M3
+      // Unreachable: a lookup is either granted (and re-asked) or turned into the fallback.
+      return decision.query;
   }
 }
 
