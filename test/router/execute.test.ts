@@ -1,0 +1,232 @@
+import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { homedir, tmpdir } from "node:os";
+import { join } from "node:path";
+import {
+  checkExecutable,
+  executeDecision,
+  expandPath,
+  normalizeDecision,
+} from "../../src/router/execute.ts";
+import { readConvention, metadataBlock, firstMessage, ConventionError } from "../../src/router/convention.ts";
+import type { RouterDecision } from "../../src/contracts/decision.ts";
+import type { CreateSessionOptions } from "../../src/omnigent/client.ts";
+
+let dir: string;
+
+beforeEach(() => {
+  dir = mkdtempSync(join(tmpdir(), "bob-execute-"));
+});
+
+afterEach(() => {
+  rmSync(dir, { recursive: true, force: true });
+});
+
+const candidateIds = new Set(["s1", "s2"]);
+
+describe("checkExecutable — a valid schema is not a valid address", () => {
+  test("continue to a session in the pool passes", () => {
+    const decision: RouterDecision = { action: "continue", session_id: "s1", request: "r", ack: "a" };
+    expect(checkExecutable(decision, { candidateIds })).toEqual({ ok: true });
+  });
+
+  test("a hallucinated session id is caught before any side effect", () => {
+    const decision: RouterDecision = {
+      action: "continue",
+      session_id: "conv_imaginary",
+      request: "r",
+      ack: "a",
+    };
+    const result = checkExecutable(decision, { candidateIds });
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.reason).toContain("conv_imaginary");
+  });
+
+  test("new into an existing directory passes", () => {
+    const decision: RouterDecision = { action: "new", cwd: dir, request: "r", ack: "a" };
+    expect(checkExecutable(decision, { candidateIds })).toEqual({ ok: true });
+  });
+
+  test("a nonexistent path is caught", () => {
+    const decision: RouterDecision = {
+      action: "new",
+      cwd: join(dir, "no-such-project"),
+      request: "r",
+      ack: "a",
+    };
+    const result = checkExecutable(decision, { candidateIds });
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.reason).toContain("not an existing directory");
+  });
+
+  test("a file is not a workspace", () => {
+    const file = join(dir, "README.md");
+    writeFileSync(file, "not a directory");
+    const result = checkExecutable({ action: "new", cwd: file, request: "r", ack: "a" }, { candidateIds });
+    expect(result.ok).toBe(false);
+  });
+
+  test("a relative path is rejected — placement must be unambiguous", () => {
+    const result = checkExecutable(
+      { action: "new", cwd: "dev/craft", request: "r", ack: "a" },
+      { candidateIds },
+    );
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.reason).toContain("absolute");
+  });
+
+  test("clarify is always executable — it touches nothing", () => {
+    expect(checkExecutable({ action: "clarify", question: "which?" }, { candidateIds })).toEqual({
+      ok: true,
+    });
+  });
+
+  test("a ledger lookup is rejected until the mechanism exists", () => {
+    const result = checkExecutable({ action: "lookup_ledger", query: "subtitle" }, { candidateIds });
+    expect(result.ok).toBe(false);
+  });
+});
+
+describe("normalizeDecision", () => {
+  test("expands a tilde in the placement path", () => {
+    const decision = normalizeDecision({
+      action: "new",
+      cwd: "~/dev/craft",
+      request: "r",
+      ack: "a",
+    });
+    expect(decision).toMatchObject({ cwd: join(homedir(), "dev", "craft") });
+  });
+
+  test("leaves the other actions untouched", () => {
+    const decision: RouterDecision = { action: "clarify", question: "which?" };
+    expect(normalizeDecision(decision)).toEqual(decision);
+  });
+
+  test("expandPath handles a bare tilde and an already absolute path", () => {
+    expect(expandPath("~")).toBe(homedir());
+    expect(expandPath("/Users/felho/bob")).toBe("/Users/felho/bob");
+  });
+});
+
+describe("executeDecision", () => {
+  function stubClient() {
+    const messages: Array<{ id: string; text: string }> = [];
+    const created: CreateSessionOptions[] = [];
+    return {
+      messages,
+      created,
+      client: {
+        postMessage: async (id: string, text: string) => void messages.push({ id, text }),
+        createSession: async (options: CreateSessionOptions) => {
+          created.push(options);
+          return { id: "conv_fresh" };
+        },
+      },
+    };
+  }
+
+  const deps = (client: ReturnType<typeof stubClient>["client"]) => ({
+    client,
+    conventionText: "speak on finish",
+    permissionMode: "bypassPermissions",
+  });
+
+  test("continue posts the request to the existing session", async () => {
+    const stub = stubClient();
+    const outcome = await executeDecision(
+      { action: "continue", session_id: "s1", request: "add the test", ack: "a" },
+      deps(stub.client),
+    );
+    expect(stub.messages).toEqual([{ id: "s1", text: "add the test" }]);
+    expect(outcome).toEqual({ targetSessionId: "s1", executed: true });
+  });
+
+  test("new creates in the chosen workspace with the C6 convention injected", async () => {
+    const stub = stubClient();
+    await executeDecision(
+      { action: "new", cwd: "/Users/felho/dev/craft", request: "summarise it", ack: "a" },
+      deps(stub.client),
+    );
+    expect(stub.created[0]).toMatchObject({
+      workspace: "/Users/felho/dev/craft",
+      permissionMode: "bypassPermissions",
+      appendSystemPrompt: "speak on finish",
+    });
+  });
+
+  test("new prefixes the first message with the delimited id block", async () => {
+    const stub = stubClient();
+    const outcome = await executeDecision(
+      { action: "new", cwd: "/tmp", request: "summarise it", ack: "a" },
+      deps(stub.client),
+    );
+    expect(stub.messages[0]!.id).toBe("conv_fresh");
+    expect(stub.messages[0]!.text).toBe(
+      `[bob metadata — not part of the request: your session id is conv_fresh]\n\nsummarise it`,
+    );
+    expect(outcome.targetSessionId).toBe("conv_fresh");
+  });
+
+  test("the metadata block is separated from the request, so a verbatim task cannot capture it", async () => {
+    const stub = stubClient();
+    await executeDecision(
+      { action: "new", cwd: "/tmp", request: "write this sentence to a file, verbatim", ack: "a" },
+      deps(stub.client),
+    );
+    const [block, request] = stub.messages[0]!.text.split("\n\n");
+    expect(block).toBe(metadataBlock("conv_fresh"));
+    expect(request).toBe("write this sentence to a file, verbatim");
+  });
+
+  test("clarify dispatches nothing at all", async () => {
+    const stub = stubClient();
+    const outcome = await executeDecision({ action: "clarify", question: "which?" }, deps(stub.client));
+    expect(stub.messages).toEqual([]);
+    expect(stub.created).toEqual([]);
+    expect(outcome).toEqual({ targetSessionId: null, executed: false });
+  });
+});
+
+describe("readConvention", () => {
+  const write = (contents: string) => {
+    const path = join(dir, "CLAUDE.md");
+    writeFileSync(path, contents, "utf8");
+    return path;
+  };
+
+  test("extracts the marked block, trimmed", () => {
+    const path = write(
+      "# Home\n\n<!-- C6-CONVENTION-START -->\n\nSpeak one sentence.\n\n<!-- C6-CONVENTION-END -->\n\nmore prose\n",
+    );
+    expect(readConvention(path)).toBe("Speak one sentence.");
+  });
+
+  test("a missing file is a hard, explained error — a mute bridge is the worst failure", () => {
+    expect(() => readConvention(join(dir, "absent.md"))).toThrow(ConventionError);
+  });
+
+  test("a file without the markers is an error, not a whole-file fallback", () => {
+    expect(() => readConvention(write("# Home\n\nno markers here\n"))).toThrow(/C6-CONVENTION-START/);
+  });
+
+  test("an empty block is an error", () => {
+    expect(() =>
+      readConvention(write("<!-- C6-CONVENTION-START -->\n\n<!-- C6-CONVENTION-END -->")),
+    ).toThrow(ConventionError);
+  });
+
+  test("the real ~/bob/CLAUDE.md carries a usable convention", () => {
+    const convention = readConvention(join(homedir(), "bob", "CLAUDE.md"));
+    expect(convention).toContain("bobsay");
+    expect(convention).toContain("--session");
+  });
+});
+
+describe("firstMessage", () => {
+  test("is the block, a blank line, then the request", () => {
+    expect(firstMessage("abc", "do the thing")).toBe(
+      "[bob metadata — not part of the request: your session id is abc]\n\ndo the thing",
+    );
+  });
+});
