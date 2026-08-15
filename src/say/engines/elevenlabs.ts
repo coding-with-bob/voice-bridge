@@ -8,7 +8,7 @@
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { SpeechEngine } from "./engine.ts";
+import type { SpeakTuning, SpeechEngine } from "./engine.ts";
 
 const API_ROOT = "https://api.elevenlabs.io/v1/text-to-speech";
 const OUTPUT_FORMAT = "mp3_44100_128";
@@ -23,7 +23,11 @@ export function buildElevenLabsRequest(options: {
   text: string;
   apiKey: string;
   modelId?: string;
+  speed?: number;
 }): { url: string; init: RequestInit } {
+  // At the default rate no voice_settings go out at all: the voice's stored settings
+  // stay authoritative, and the request is byte-identical to the pre-speed era.
+  const overridesRate = options.speed !== undefined && options.speed !== 1.0;
   return {
     url: `${API_ROOT}/${encodeURIComponent(options.voiceId)}?output_format=${OUTPUT_FORMAT}`,
     init: {
@@ -36,6 +40,7 @@ export function buildElevenLabsRequest(options: {
       body: JSON.stringify({
         text: options.text,
         model_id: options.modelId ?? DEFAULT_ELEVENLABS_MODEL,
+        ...(overridesRate ? { voice_settings: { speed: options.speed } } : {}),
       }),
     },
   };
@@ -74,7 +79,7 @@ function nonEmpty(value: string | null | undefined): string | null {
 export const elevenLabsEngine: SpeechEngine = {
   name: "elevenlabs",
   available: async () => (await resolveApiKey({})) !== null,
-  async speak(text: string, voice: string): Promise<void> {
+  async speak(text: string, voice: string, tuning?: SpeakTuning): Promise<void> {
     const apiKey = await resolveApiKey({});
     if (apiKey === null) throw new Error("no ELEVENLABS_API_KEY in the environment or Keychain");
 
@@ -83,6 +88,7 @@ export const elevenLabsEngine: SpeechEngine = {
       text,
       apiKey,
       modelId: nonEmpty(process.env.ELEVENLABS_MODEL_ID) ?? undefined,
+      speed: tuning?.speed,
     });
 
     const response = await fetch(url, init);

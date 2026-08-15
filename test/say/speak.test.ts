@@ -204,6 +204,23 @@ describe("speak — nothing speakable", () => {
   });
 });
 
+describe("speak — the configured speed reaches the engine", () => {
+  test("the tuning rides along to the engine that plays", async () => {
+    const speeds: Array<number | undefined> = [];
+    const engine: SpeechEngine = {
+      name: "say",
+      available: () => true,
+      async speak(_text, _voice, tuning) {
+        speeds.push(tuning?.speed);
+      },
+    };
+    await speak(
+      baseOptions({ engines: { say: engine, elevenlabs: fakeEngine("elevenlabs") }, speed: 1.1 }),
+    );
+    expect(speeds).toEqual([1.1]);
+  });
+});
+
 describe("speak — the cap is loud, never silent", () => {
   test("overlong text is cut, spoken, flagged, and the warning says how much fell", async () => {
     const say = fakeEngine("say");

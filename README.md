@@ -54,7 +54,8 @@ acquiring a remote without a deliberate decision. It has none today.
 The default voice is `say:Tünde`, the macOS Hungarian system voice — no key, works immediately.
 For ElevenLabs, put the key in the environment or the Keychain (service `ELEVENLABS_API_KEY`),
 pick a voice id, and set `default_voice: "elevenlabs:<id>"` in `~/bob/defaults.yaml`.
-`ELEVENLABS_MODEL_ID` overrides the model (default `eleven_flash_v2_5`).
+`ELEVENLABS_MODEL_ID` overrides the model (default `eleven_flash_v2_5`), and
+`elevenlabs_speed` in the same file adjusts the pace (0.7–1.2, default 1.0 — the voice's own).
 
 ### 4. Entry
 

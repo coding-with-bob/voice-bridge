@@ -53,6 +53,7 @@ program
             sessionId: null,
             homeDir: config.home_dir,
             defaultVoice: config.default_voice,
+            speed: config.elevenlabs_speed,
             engines: { say: sayEngine, elevenlabs: elevenLabsEngine },
           });
         },

@@ -59,6 +59,28 @@ describe("elevenlabs engine — request", () => {
     expect(url).toContain(encodeURIComponent("../../admin"));
   });
 
+  test("carries voice_settings.speed when the rate is not the default", () => {
+    const { init } = buildElevenLabsRequest({
+      voiceId: "abc",
+      text: "Ready.",
+      apiKey: "sk-test",
+      speed: 1.1,
+    });
+    expect(JSON.parse(init.body as string).voice_settings).toEqual({ speed: 1.1 });
+  });
+
+  test("sends no voice_settings at the default rate — the voice's stored settings rule", () => {
+    const plain = buildElevenLabsRequest({ voiceId: "abc", text: "Ready.", apiKey: "sk-test" });
+    const unit = buildElevenLabsRequest({
+      voiceId: "abc",
+      text: "Ready.",
+      apiKey: "sk-test",
+      speed: 1.0,
+    });
+    expect(JSON.parse(plain.init.body as string)).not.toHaveProperty("voice_settings");
+    expect(unit.init.body).toEqual(plain.init.body);
+  });
+
   test("honours a model override", () => {
     const { init } = buildElevenLabsRequest({
       voiceId: "abc",

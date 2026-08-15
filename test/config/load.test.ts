@@ -52,6 +52,12 @@ describe("loadConfig — happy paths", () => {
     expect(config.gc_idle_hours).toBe(DEFAULT_CONFIG.gc_idle_hours);
   });
 
+  test("the speech speed defaults to the voice's own rate and accepts an in-range override", () => {
+    expect(loadConfig({ homeDir: dir }).config.elevenlabs_speed).toBe(1.0);
+    write("elevenlabs_speed: 1.1\n");
+    expect(loadConfig({ homeDir: dir }).config.elevenlabs_speed).toBe(1.1);
+  });
+
   test("an empty file is treated as all-defaults", () => {
     write("");
     expect(loadConfig({ homeDir: dir }).config.followup_window_min).toBe(
@@ -105,6 +111,13 @@ describe("loadConfig — malformed config is a hard, explained error", () => {
   test("a wrong value type", () => {
     write('followup_window_min: "half an hour"\n');
     expectConfigError(() => loadConfig({ homeDir: dir }), "followup_window_min");
+  });
+
+  test("a speech speed outside what the ElevenLabs API supports", () => {
+    write("elevenlabs_speed: 1.5\n");
+    expectConfigError(() => loadConfig({ homeDir: dir }), "elevenlabs_speed");
+    write("elevenlabs_speed: 0.5\n");
+    expectConfigError(() => loadConfig({ homeDir: dir }), "elevenlabs_speed");
   });
 
   test("an out-of-range value", () => {

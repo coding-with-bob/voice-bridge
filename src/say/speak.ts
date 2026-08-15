@@ -33,6 +33,8 @@ export interface SpeakOptions {
   engines: EngineRegistry;
   voice?: string;
   engine?: string;
+  /** ElevenLabs speech rate from C3 (`elevenlabs_speed`); engines that cannot honour it ignore it. */
+  speed?: number;
   lockOptions?: LockOptions;
   now?: () => Date;
   warn?: (message: string) => void;
@@ -130,7 +132,9 @@ async function playWithFallback(
 
   if (await engine.available()) {
     try {
-      await engine.speak(applyProsody(cleaned, requested.engine), requested.voice);
+      await engine.speak(applyProsody(cleaned, requested.engine), requested.voice, {
+        speed: options.speed,
+      });
       return requested;
     } catch (error) {
       if (requested.engine === "say") throw couldNotSpeak("say", error);
@@ -144,7 +148,9 @@ async function playWithFallback(
 
   const fallback = { engine: "say" as const, voice: fallbackSayVoice(options.defaultVoice) };
   try {
-    await options.engines.say.speak(applyProsody(cleaned, "say"), fallback.voice);
+    await options.engines.say.speak(applyProsody(cleaned, "say"), fallback.voice, {
+      speed: options.speed,
+    });
     return fallback;
   } catch (error) {
     throw couldNotSpeak("say (fallback)", error);

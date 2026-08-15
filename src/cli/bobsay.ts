@@ -37,6 +37,7 @@ program
         sessionId: (options.session as string | undefined) ?? null,
         homeDir: config.home_dir,
         defaultVoice: config.default_voice,
+        speed: config.elevenlabs_speed,
         voice: options.voice as string | undefined,
         engine: options.engine as string | undefined,
         engines: { say: sayEngine, elevenlabs: elevenLabsEngine },

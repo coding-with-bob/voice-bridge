@@ -21,6 +21,12 @@ export const BobConfigSchema = z.strictObject({
   candidate_window_days: z.number().int().positive(),
   /** Voice used when neither the caller nor the session asks for a specific one. */
   default_voice: VoiceRefSchema,
+  /**
+   * ElevenLabs speech rate: 1.0 is the voice's own pace; the API supports 0.7–1.2 and
+   * warns that the extremes cost quality. At exactly 1.0 no override is sent at all,
+   * so the voice's stored settings stay authoritative. The `say` engine ignores this.
+   */
+  elevenlabs_speed: z.number().min(0.7).max(1.2),
   /** The state home. Defaults to wherever this config was found; declaring it is optional. */
   home_dir: z.string().min(1),
   omnigent_url: z.url(),
@@ -36,6 +42,7 @@ export const DEFAULT_CONFIG: Omit<BobConfig, "home_dir"> = {
   gc_idle_hours: 3,
   candidate_window_days: 14,
   default_voice: "say:Tünde",
+  elevenlabs_speed: 1.0,
   omnigent_url: "http://127.0.0.1:6767",
   router_model: "claude-opus-5",
   clarify_fallback_text: "Nem értettem, hova tartozik ez. Mondanád másképp?",
