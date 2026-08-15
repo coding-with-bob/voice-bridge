@@ -118,7 +118,22 @@ async function serverCheck(deps: DoctorDeps): Promise<CheckResult> {
 
 async function bindCheck(deps: DoctorDeps): Promise<CheckResult> {
   const port = portOf(deps.omnigentUrl);
-  const hosts = await deps.readListenHosts(port);
+
+  let hosts: string[];
+  try {
+    hosts = await deps.readListenHosts(port);
+  } catch (error) {
+    // The probe shells out to `lsof`, which lives in /usr/sbin — a directory a minimal
+    // PATH (Raycast, launchd) can omit. Letting that throw would take the whole report
+    // down over one unrunnable check, which is the opposite of what this report is for.
+    return {
+      name: "bind",
+      ok: false,
+      detail: `could not probe port ${port}: ${describe(error)}`,
+      hint: "The probe needs `lsof` on PATH — add /usr/sbin if you are running from a minimal environment.",
+    };
+  }
+
   const ok = isLocalhostOnly(hosts);
   if (hosts.length === 0) {
     // Nothing listening is a failure to verify the R-15 condition, but the fix is to start

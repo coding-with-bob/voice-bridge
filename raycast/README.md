@@ -41,8 +41,12 @@ found the hard way:
   detected automatically (`src/router/model.ts`), and `bob doctor`'s **router** check exercises
   the real decision call so this failure surfaces at the check rather than at the microphone.
 
+`/usr/sbin` is in that list because the bind check shells out to `lsof`, which lives there. If it
+goes missing, doctor now reports a failed **bind** check with that hint rather than falling over —
+but the entry script's own PATH carries it, so the real path is covered.
+
 Verify the whole path the way the environment actually presents it:
 
 ```bash
-env -i HOME="$HOME" /bin/zsh -lc 'PATH="$HOME/.local/bin:/opt/homebrew/bin:/usr/bin:/bin" bob doctor'
+env -i HOME="$HOME" /bin/zsh -lc 'PATH="$HOME/.local/bin:/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin" bob doctor'
 ```

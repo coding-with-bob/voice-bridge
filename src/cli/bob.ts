@@ -91,7 +91,7 @@ program
       process.exit(report.ok ? 0 : 1);
     } catch (error) {
       console.error(`bob doctor: ${error instanceof Error ? error.message : String(error)}`);
-      process.exit(error instanceof ConfigError ? 2 : 1);
+      process.exit(isSetupError(error) ? 2 : 1);
     }
   });
 
@@ -208,9 +208,4 @@ function printReport(report: DoctorReport): void {
     if (check.hint !== undefined) console.log(`            → ${check.hint}`);
   }
   console.log(report.ok ? "\nAll checks passed." : "\nSome checks failed.");
-}
-
-function notYet(verb: string, increment: string): never {
-  console.error(`${verb} is not implemented yet (arrives in ${increment}).`);
-  process.exit(2);
 }

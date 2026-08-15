@@ -107,7 +107,7 @@ leaves what the request *means* to the session that owns it.
 
 ## Acceptance run — 2026-08-15
 
-All three design scenarios, live, through the Raycast script in a bare environment.
+All three design scenarios, live, through the Raycast script in a bare environment — the script leg, entered as text. The hotkey-and-dictation leg in front of it is the one part still unexercised, because it belongs to the owner.
 
 | Step | Result | Time | Target |
 |---|---|---|---|

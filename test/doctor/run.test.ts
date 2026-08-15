@@ -87,6 +87,28 @@ describe("runDoctor — every failure explains its fix", () => {
     expect(check(report, "bind").hint).toContain("loopback");
   });
 
+  /**
+   * Regression: `lsof` lives in /usr/sbin, which a minimal PATH (Raycast, launchd) can omit.
+   * The spawn threw straight out of the check and took the whole report down with it —
+   * exactly what "every check runs even after one fails" exists to prevent.
+   */
+  test("an unrunnable bind probe is a failed check, not a crashed doctor", async () => {
+    const report = await runDoctor(
+      deps({
+        readListenHosts: async () => {
+          throw new Error('Executable not found in $PATH: "lsof"');
+        },
+      }),
+    );
+    expect(report.checks).toHaveLength(8);
+    expect(check(report, "bind").ok).toBe(false);
+    expect(check(report, "bind").detail).toContain("lsof");
+    expect(check(report, "bind").hint).toContain("PATH");
+    // The checks after it still ran.
+    expect(check(report, "host").ok).toBe(true);
+    expect(check(report, "spawn").ok).toBe(true);
+  });
+
   test("nothing listening is reported as such, not as safely bound", async () => {
     const report = await runDoctor(deps({ readListenHosts: async () => [] }));
     expect(check(report, "bind").ok).toBe(false);
