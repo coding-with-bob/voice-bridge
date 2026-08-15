@@ -50,7 +50,16 @@ sessionItems(id)
 health()
 ```
 
+Three methods beyond the six C4 names, added deliberately in M2 and documented here rather than
+smuggled in: `listAgents()` and `listHosts()` (`createSession` resolves the claude-native agent and
+an online host through them; `bob doctor` reports on both), and `deleteSession()` — reserved for
+doctor deleting the throwaway session it created itself, because a smoke-test session left in the
+pool becomes a routing candidate forever. The invariant that matters is unchanged: **no HTTP call
+lives outside this module.**
+
 - `terminal_launch_args` carries `--permission-mode` / `--append-system-prompt`.
+  **Verified live on 2026-08-15** (M2 risk probe): a marker planted via `--append-system-prompt`
+  came back from the spawned session, so C6 uses this path and needs no first-message fallback.
 - Parse `session.status` **defensively**: the payload is inconsistently data-wrapped vs flat, and a
   stray `response.completed` can appear at turn start.
 - Auth: spawned sessions inherit the machine's standard chain — Claude Code authenticates to the

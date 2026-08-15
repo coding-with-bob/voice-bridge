@@ -1,10 +1,14 @@
 #!/usr/bin/env bun
 /**
  * `bob` — the router CLI. Per-invocation, no daemon: it decides, dispatches, acks and exits.
- * Verbs land increment by increment (route: M3, doctor: M2, log: M4, gc: M5).
+ * Verbs land increment by increment (route: M3, log: M4, gc: M5).
  */
 import { Command } from "commander";
 import { version } from "../version.ts";
+import { loadConfig, ConfigError } from "../config/load.ts";
+import { OmnigentClient } from "../omnigent/client.ts";
+import { readListenHosts } from "../doctor/bind.ts";
+import { runDoctor, type DoctorReport } from "../doctor/run.ts";
 
 const program = new Command();
 
@@ -25,7 +29,27 @@ program
   .command("doctor")
   .description("check the platform: server health, localhost bind, host daemon, spawn smoke test")
   .option("--json", "emit the report as JSON")
-  .action(() => notYet("bob doctor", "M2"));
+  .option("--quick", "skip the spawn smoke test (no session is created)")
+  .action(async (options: { json?: boolean; quick?: boolean }) => {
+    try {
+      const { config, source } = loadConfig();
+      const report = await runDoctor({
+        client: new OmnigentClient({ baseUrl: config.omnigent_url }),
+        omnigentUrl: config.omnigent_url,
+        homeDir: config.home_dir,
+        configSource: source,
+        readListenHosts,
+        spawn: options.quick !== true,
+      });
+
+      if (options.json) console.log(JSON.stringify(report, null, 2));
+      else printReport(report);
+      process.exit(report.ok ? 0 : 1);
+    } catch (error) {
+      console.error(`bob doctor: ${error instanceof Error ? error.message : String(error)}`);
+      process.exit(error instanceof ConfigError ? 2 : 1);
+    }
+  });
 
 program
   .command("log")
@@ -41,7 +65,15 @@ program
   .option("--json", "emit as JSON")
   .action(() => notYet("bob gc", "M5"));
 
-program.parse();
+await program.parseAsync();
+
+function printReport(report: DoctorReport): void {
+  for (const check of report.checks) {
+    console.log(`${check.ok ? "✓" : "✗"} ${check.name.padEnd(7)} ${check.detail}`);
+    if (check.hint !== undefined) console.log(`            → ${check.hint}`);
+  }
+  console.log(report.ok ? "\nAll checks passed." : "\nSome checks failed.");
+}
 
 function notYet(verb: string, increment: string): never {
   console.error(`${verb} is not implemented yet (arrives in ${increment}).`);
