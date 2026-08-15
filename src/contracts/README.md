@@ -100,7 +100,11 @@ re-inject it), so the rule fully lands for sessions born from now on; the old po
 **Speech comes in two sizes** (amended 2026-08-15, same day, second failure). The convention
 distinguishes *reporting on work* — one plain sentence, as before — from *the answer itself being
 the thing to hear* (an explanation, a recap, anything the request wants read out): the whole
-answer, split into paragraph-sized `bobsay` calls that the playback lock plays back to back. The
-original text knew only the one-sentence report, so a spoken "refresh my memory of these movies"
-got a single sentence while the real answer sat unread in markdown — and when explicitly asked to
-read it out, the C1 cap of that era cut both chunks mid-sentence. Same migration note as above.
+answer, in **as few `bobsay` calls as the C1 cap allows — one whenever it fits**; a genuinely
+longer answer splits at big natural boundaries, chained in a single command. The original text
+knew only the one-sentence report, so a spoken "refresh my memory of these movies" got a single
+sentence while the real answer sat unread in markdown — and when explicitly asked to read it out,
+the C1 cap of that era cut both chunks mid-sentence. The first "paragraph-sized calls" phrasing of
+this amendment over-corrected: a four-call recap measured 9–12 s of silence between chunks, ~2–3 s
+of it TTS fetch and the rest the session composing its next command — hence fewest-calls, and
+chaining so no thinking pause lands mid-answer. Same migration note as above.

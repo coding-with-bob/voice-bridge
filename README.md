@@ -83,7 +83,7 @@ round trip in a throwaway session it deletes afterwards.
 | `bob doctor` | The eight platform checks. `--quick` skips the spawn smoke test; `--json` for machines. Exit 1 on any failure, 2 on broken config. |
 | `bob log` | The three logs as one timeline. `--reachbacks` for reach-backs only, `--spoken` / `--decisions` / `--gc` to narrow, `-n` for how many, `--json`. |
 | `bob gc` | Stop sessions idle beyond `gc_idle_hours`. **Stop only — never delete.** `--dry-run` lists what it would touch. |
-| `bobsay "<text>"` | Speak text and record what was heard in the ledger. One sentence for a status report; paragraph-sized calls back to back for content-length answers (a single call is capped at 5,000 chars, and a cut warns on stderr — never silent). `--session <id>` when a session is speaking, `--voice`, `--engine`, `--json`. |
+| `bobsay "<text>"` | Speak text and record what was heard in the ledger. One sentence for a status report; a content-length answer goes in one call when it fits (the cap is 5,000 chars, and a cut warns on stderr — never silent), split into as few chained calls as possible above that. `--session <id>` when a session is speaking, `--voice`, `--engine`, `--json`. |
 
 Exit codes are uniform: **0** done, **1** could not do it, **2** the call or the setup was wrong.
 
