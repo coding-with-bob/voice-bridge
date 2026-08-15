@@ -9,7 +9,7 @@
  */
 import { existsSync, statSync } from "node:fs";
 import { homedir } from "node:os";
-import { isAbsolute, join, resolve } from "node:path";
+import { dirname, isAbsolute, join, resolve } from "node:path";
 import type { RouterDecision } from "../contracts/decision.ts";
 import type { OmnigentClient } from "../omnigent/client.ts";
 import { firstMessage } from "./convention.ts";
@@ -28,9 +28,16 @@ export function expandPath(path: string): string {
   return resolve(path);
 }
 
+export interface PlacementBounds {
+  /** Directory whose immediate children are the offered project workspaces. */
+  projectsRoot: string;
+  /** The designed fallback placement. */
+  homeDir: string;
+}
+
 export function checkExecutable(
   decision: RouterDecision,
-  context: { candidateIds: Set<string> },
+  context: { candidateIds: Set<string>; placement: PlacementBounds },
 ): ExecutabilityResult {
   switch (decision.action) {
     case "continue":
@@ -47,6 +54,14 @@ export function checkExecutable(
       if (!isDirectory(decision.cwd)) {
         return { ok: false, reason: `cwd "${decision.cwd}" is not an existing directory` };
       }
+      if (!isOfferedPlacement(decision.cwd, context.placement)) {
+        return {
+          ok: false,
+          reason:
+            `cwd "${decision.cwd}" is outside the offered placements ` +
+            `(${context.placement.projectsRoot}/<name> or ${context.placement.homeDir})`,
+        };
+      }
       return { ok: true };
     }
     case "clarify":
@@ -56,6 +71,17 @@ export function checkExecutable(
       // silently ignored request for context the model said it needed.
       return { ok: false, reason: "ledger lookup is not available yet" };
   }
+}
+
+/**
+ * Placement is bounded to exactly what the prompt offered: a direct child of the projects
+ * root, or the home directory. "Any directory that exists" is a much larger set, and these
+ * sessions are born with bypassPermissions — the permission model leans on being pointed at
+ * an owned workspace. The prompt already says so; this is what holds it to it.
+ */
+function isOfferedPlacement(cwd: string, bounds: PlacementBounds): boolean {
+  if (cwd === resolve(bounds.homeDir)) return true;
+  return dirname(cwd) === resolve(bounds.projectsRoot) && cwd !== resolve(bounds.projectsRoot);
 }
 
 function isDirectory(path: string): boolean {

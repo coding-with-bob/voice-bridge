@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import {
@@ -23,11 +23,16 @@ afterEach(() => {
 });
 
 const candidateIds = new Set(["s1", "s2"]);
+/** Wide bounds for the cases that are not about placement. */
+let placement: { projectsRoot: string; homeDir: string };
+beforeEach(() => {
+  placement = { projectsRoot: dir, homeDir: dir };
+});
 
 describe("checkExecutable — a valid schema is not a valid address", () => {
   test("continue to a session in the pool passes", () => {
     const decision: RouterDecision = { action: "continue", session_id: "s1", request: "r", ack: "a" };
-    expect(checkExecutable(decision, { candidateIds })).toEqual({ ok: true });
+    expect(checkExecutable(decision, { candidateIds, placement })).toEqual({ ok: true });
   });
 
   test("a hallucinated session id is caught before any side effect", () => {
@@ -37,14 +42,14 @@ describe("checkExecutable — a valid schema is not a valid address", () => {
       request: "r",
       ack: "a",
     };
-    const result = checkExecutable(decision, { candidateIds });
+    const result = checkExecutable(decision, { candidateIds, placement });
     expect(result.ok).toBe(false);
     if (!result.ok) expect(result.reason).toContain("conv_imaginary");
   });
 
   test("new into an existing directory passes", () => {
     const decision: RouterDecision = { action: "new", cwd: dir, request: "r", ack: "a" };
-    expect(checkExecutable(decision, { candidateIds })).toEqual({ ok: true });
+    expect(checkExecutable(decision, { candidateIds, placement })).toEqual({ ok: true });
   });
 
   test("a nonexistent path is caught", () => {
@@ -54,7 +59,7 @@ describe("checkExecutable — a valid schema is not a valid address", () => {
       request: "r",
       ack: "a",
     };
-    const result = checkExecutable(decision, { candidateIds });
+    const result = checkExecutable(decision, { candidateIds, placement });
     expect(result.ok).toBe(false);
     if (!result.ok) expect(result.reason).toContain("not an existing directory");
   });
@@ -62,27 +67,74 @@ describe("checkExecutable — a valid schema is not a valid address", () => {
   test("a file is not a workspace", () => {
     const file = join(dir, "README.md");
     writeFileSync(file, "not a directory");
-    const result = checkExecutable({ action: "new", cwd: file, request: "r", ack: "a" }, { candidateIds });
+    const result = checkExecutable({ action: "new", cwd: file, request: "r", ack: "a" }, { candidateIds, placement });
     expect(result.ok).toBe(false);
   });
 
   test("a relative path is rejected — placement must be unambiguous", () => {
     const result = checkExecutable(
       { action: "new", cwd: "dev/craft", request: "r", ack: "a" },
-      { candidateIds },
+      { candidateIds, placement },
     );
     expect(result.ok).toBe(false);
     if (!result.ok) expect(result.reason).toContain("absolute");
   });
 
+  /**
+   * The permission model rests on this. Sessions are born with bypassPermissions because
+   * they are pointed at owned project directories; "any directory that exists" is not that.
+   * The prompt already promises `<root>/<name>` or the home dir — the check now holds it to
+   * that promise, because a prompt is guidance and a contract is not.
+   */
+  describe("placement is held to the vocabulary the prompt offered", () => {
+    // Built per test: `dir` only exists once beforeEach has made it.
+    const bounded = () => ({
+      candidateIds,
+      placement: { projectsRoot: join(dir, "dev"), homeDir: join(dir, "bob") },
+    });
+    const newIn = (cwd: string): RouterDecision => ({ action: "new", cwd, request: "r", ack: "a" });
+
+    beforeEach(() => {
+      mkdirSync(join(dir, "dev", "craft"), { recursive: true });
+      mkdirSync(join(dir, "dev", "big", "packages"), { recursive: true });
+      mkdirSync(join(dir, "bob"), { recursive: true });
+    });
+
+    test("a project directory is allowed", () => {
+      expect(checkExecutable(newIn(join(dir, "dev", "craft")), bounded())).toEqual({ ok: true });
+    });
+
+    test("the home directory is allowed — it is the designed fallback", () => {
+      expect(checkExecutable(newIn(join(dir, "bob")), bounded())).toEqual({ ok: true });
+    });
+
+    test("the filesystem root is not", () => {
+      const result = checkExecutable(newIn("/"), bounded());
+      expect(result.ok).toBe(false);
+      if (!result.ok) expect(result.reason).toContain("outside");
+    });
+
+    test("the projects root itself is not — that is the parent of every project", () => {
+      expect(checkExecutable(newIn(join(dir, "dev")), bounded()).ok).toBe(false);
+    });
+
+    test("a directory nested inside a project is not — it was never offered", () => {
+      expect(checkExecutable(newIn(join(dir, "dev", "big", "packages")), bounded()).ok).toBe(false);
+    });
+
+    test("an unrelated existing directory is not", () => {
+      expect(checkExecutable(newIn(dir), bounded()).ok).toBe(false);
+    });
+  });
+
   test("clarify is always executable — it touches nothing", () => {
-    expect(checkExecutable({ action: "clarify", question: "which?" }, { candidateIds })).toEqual({
+    expect(checkExecutable({ action: "clarify", question: "which?" }, { candidateIds, placement })).toEqual({
       ok: true,
     });
   });
 
   test("a ledger lookup is rejected until the mechanism exists", () => {
-    const result = checkExecutable({ action: "lookup_ledger", query: "subtitle" }, { candidateIds });
+    const result = checkExecutable({ action: "lookup_ledger", query: "subtitle" }, { candidateIds, placement });
     expect(result.ok).toBe(false);
   });
 });

@@ -288,7 +288,10 @@ async function decide(
       continue;
     }
 
-    const executable = checkExecutable(decision, { candidateIds: addressableIds(context) });
+    const executable = checkExecutable(decision, {
+      candidateIds: addressableIds(context),
+      placement: { projectsRoot: deps.projectsRoot, homeDir: deps.config.home_dir },
+    });
     if (!executable.ok) return fallbackWith(`decision is not executable: ${executable.reason}`);
 
     return {

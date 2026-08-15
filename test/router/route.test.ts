@@ -61,7 +61,7 @@ function harness(overrides: Partial<RouteDeps> = {}) {
       JSON.stringify({ action: "continue", session_id: "s1", request: "do it", ack: "Passing it on." }),
     ),
     conventionText: "speak on finish",
-    projectsRoot: "/Users/felho/dev",
+    projectsRoot: home, // `workspace` below is a direct child, i.e. an offered placement
     projectDirs: ["craft"],
     speak: async (text: string) => void spoken.push(text),
     now: () => NOW,
