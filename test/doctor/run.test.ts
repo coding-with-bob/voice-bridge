@@ -1,6 +1,8 @@
 import { describe, expect, test } from "bun:test";
 import { runDoctor, type DoctorDeps } from "../../src/doctor/run.ts";
 import type { PoolSession } from "../../src/omnigent/parse.ts";
+import { homedir } from "node:os";
+import { join } from "node:path";
 
 type StubClient = DoctorDeps["client"];
 
@@ -23,6 +25,7 @@ const deps = (overrides: Partial<DoctorDeps> = {}): DoctorDeps => ({
   omnigentUrl: "http://127.0.0.1:6767",
   homeDir: "/Users/felho/bob",
   configSource: "file",
+  conventionFile: join(homedir(), "bob", "CLAUDE.md"),
   readListenHosts: async () => ["127.0.0.1"],
   sleep: async () => {},
   spawn: true,
@@ -38,6 +41,7 @@ describe("runDoctor — a healthy platform", () => {
     expect(report.ok).toBe(true);
     expect(report.checks.map((entry) => entry.name)).toEqual([
       "config",
+      "speech",
       "server",
       "bind",
       "host",
@@ -133,7 +137,7 @@ describe("runDoctor — every failure explains its fix", () => {
     const report = await runDoctor(
       deps({ client: stubClient({ health: async () => ({ ok: false, detail: "down" }) }) }),
     );
-    expect(report.checks).toHaveLength(6);
+    expect(report.checks).toHaveLength(7);
   });
 });
 

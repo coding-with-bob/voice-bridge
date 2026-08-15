@@ -6,6 +6,7 @@
  * command that fixes it.
  */
 import { isLocalhostOnly } from "./bind.ts";
+import { readConvention } from "../router/convention.ts";
 import { CLAUDE_NATIVE_HARNESS, type OmnigentClient } from "../omnigent/client.ts";
 
 /** The spike baseline a fresh session met; slower than this is worth knowing about. */
@@ -42,6 +43,8 @@ export interface DoctorDeps {
   omnigentUrl: string;
   homeDir: string;
   configSource: "file" | "defaults";
+  /** Path to the CLAUDE.md carrying the C6 speak-on-finish convention. */
+  conventionFile: string;
   readListenHosts: (port: number) => Promise<string[]>;
   /** Run the spawn smoke test (skipped by `--quick`). */
   spawn: boolean;
@@ -53,6 +56,7 @@ export interface DoctorDeps {
 export async function runDoctor(deps: DoctorDeps): Promise<DoctorReport> {
   const checks: CheckResult[] = [
     configCheck(deps),
+    conventionCheck(deps),
     await serverCheck(deps),
     await bindCheck(deps),
     await hostCheck(deps),
@@ -72,6 +76,28 @@ function configCheck(deps: DoctorDeps): CheckResult {
         ? `state home ${deps.homeDir}, defaults.yaml loaded`
         : `state home ${deps.homeDir}, no defaults.yaml — using baked-in defaults`,
   };
+}
+
+/**
+ * Without the C6 convention the bridge still routes and never speaks back — a failure that
+ * looks like nothing at all. Cheap to check, so it is checked.
+ */
+function conventionCheck(deps: DoctorDeps): CheckResult {
+  try {
+    const convention = readConvention(deps.conventionFile);
+    return {
+      name: "speech",
+      ok: true,
+      detail: `speak-on-finish convention loaded (${convention.length} characters)`,
+    };
+  } catch (error) {
+    return {
+      name: "speech",
+      ok: false,
+      detail: describe(error),
+      hint: `Restore the C6 block in ${deps.conventionFile}; spawned sessions read it from there.`,
+    };
+  }
 }
 
 async function serverCheck(deps: DoctorDeps): Promise<CheckResult> {
