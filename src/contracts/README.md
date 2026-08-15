@@ -25,11 +25,17 @@ bobsay [--session <id>] [--voice <engine:voice>] [--engine elevenlabs|say] [--js
 ```
 
 - **Exit 0** = spoken (or queued and then spoken). **Nonzero** = could not speak at all, after fallback.
+  Sub-codes: `1` = playback failed even after the fallback; `2` = the call was rejected before any
+  audio (bad voice reference, contradicting `--engine`, malformed config, nothing speakable left).
 - `--json` emits `{spoken_text, engine, voice, log_path}`.
 - Side effects, in this order: play audio (serialized via a file lock) → **on successful playback**
   append the C2 log line. The log records only what was actually heard; a failed playback writes no line.
 - **Sessionless calls** (no `--session`, e.g. router acks) log with `session_id: null`.
-- Fallback from ElevenLabs to `say` is **audible, never silent**.
+- Fallback from ElevenLabs to `say` is **audible, never silent**: the sentence is still spoken, in
+  the macOS voice, and the log names the engine that actually spoke.
+- Two environment variables sit outside C3 on purpose, because they are secrets or platform
+  detail rather than behaviour: `ELEVENLABS_API_KEY` (env, else Keychain service of the same name)
+  and `ELEVENLABS_MODEL_ID` (defaults to `eleven_flash_v2_5`).
 
 ## C4 — pool client surface
 
