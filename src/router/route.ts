@@ -186,9 +186,8 @@ async function gatherContext(
     sinceDays: deps.config.candidate_window_days,
     now,
   });
-  const dispatches = dispatchEvents(
-    readDecisionEntries(deps.paths.decisionLog, { limit: DECISION_HISTORY_LIMIT }),
-  );
+  const decisions = readDecisionEntries(deps.paths.decisionLog, { limit: DECISION_HISTORY_LIMIT });
+  const dispatches = dispatchEvents(decisions);
 
   // The unfiltered list is kept: a ledger reach-back needs to address sessions the
   // candidate window has deliberately hidden.
@@ -198,6 +197,7 @@ async function gatherContext(
       sessions,
       spoken,
       dispatches,
+      decisions,
       projectsRoot: deps.projectsRoot,
       projectDirs: deps.projectDirs,
       homeDir: deps.config.home_dir,

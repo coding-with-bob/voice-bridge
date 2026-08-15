@@ -23,6 +23,7 @@ const context = (overrides: Partial<RoutingContext> = {}): RoutingContext => ({
   },
   ledger_matches: [],
   peeks: [],
+  recent_exchanges: [],
   projects_root: "/Users/felho/dev",
   project_dirs: ["craft", "confpipeline"],
   home_dir: "/Users/felho/bob",
@@ -63,6 +64,18 @@ describe("SYSTEM_PROMPT — the discipline is stated, not implied", () => {
   test("asks for bare JSON, since anything else has to be salvaged", () => {
     expect(SYSTEM_PROMPT).toContain("exactly one JSON object");
     expect(SYSTEM_PROMPT).toContain("no markdown fences");
+  });
+
+  /**
+   * Regression (2026-08-15, first real use): "greet the guest next to me" went to the
+   * torrent session — deixis to the room satisfied "does not stand on its own" and the fixed
+   * order stopped there. Replayed: the old wording misroutes 3/3, an unconstrained model 0/3.
+   * The recipe was the defect, so the recipe now carries the distinction.
+   */
+  test("a follow-up must continue the conversation's subject, not the room's", () => {
+    expect(SYSTEM_PROMPT).toContain("NOT a follow-up");
+    expect(SYSTEM_PROMPT).toContain("subject of its own");
+    expect(SYSTEM_PROMPT).toContain("about the room");
   });
 
   test("states that a sleeping session is a normal target", () => {
@@ -116,6 +129,52 @@ describe("buildUserPrompt", () => {
     const prompt = buildUserPrompt(context({ candidates: [], most_recent: null }), "x", NOW);
     expect(prompt).toContain("(none — the pool is empty)");
     expect(prompt).toContain("MOST RECENT INTERACTION: none");
+  });
+
+  test("renders recent exchanges as linked question-and-answer, oldest first", () => {
+    const prompt = buildUserPrompt(
+      context({
+        recent_exchanges: [
+          {
+            minutes_ago: 23,
+            utterance: "mi volt a legutolsó sorozat?",
+            action: "continue",
+            target_session_id: "sess-tv",
+            reply: "A Star Trek S04E04 letöltése kész.",
+          },
+          {
+            minutes_ago: 2,
+            utterance: "Hiabob köszönj, Marcinak!",
+            action: "clarify",
+            target_session_id: null,
+            reply: "Melyikre gondolsz?",
+          },
+        ],
+      }),
+      "x",
+      NOW,
+    );
+    expect(prompt).toContain("RECENT EXCHANGES");
+    expect(prompt).toContain('"mi volt a legutolsó sorozat?" → continue sess-tv → "A Star Trek S04E04');
+    expect(prompt).toContain('→ clarify → "Melyikre gondolsz?"');
+    expect(prompt.indexOf("legutolsó sorozat")).toBeLessThan(prompt.indexOf("Hiabob"));
+  });
+
+  test("no exchanges section before anything has happened", () => {
+    expect(buildUserPrompt(context(), "x", NOW)).not.toContain("RECENT EXCHANGES");
+  });
+
+  test("an exchange with no reply yet says so", () => {
+    const prompt = buildUserPrompt(
+      context({
+        recent_exchanges: [
+          { minutes_ago: 1, utterance: "u", action: "new", target_session_id: "sess-x", reply: null },
+        ],
+      }),
+      "x",
+      NOW,
+    );
+    expect(prompt).toContain("(no spoken reply yet)");
   });
 
   test("says nothing about peeks or the ledger until a round has actually happened", () => {

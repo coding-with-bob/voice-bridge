@@ -107,6 +107,31 @@ export const ROUTING_TABLE: RoutingCase[] = [
     expect: { action: "continue", session_id: "sess-subtitles" },
   },
   {
+    // Regression (2026-08-15, first real use): went to the torrent session under the old
+    // follow-up wording — deixis to the room read as deixis to the conversation. The old
+    // prompt misrouted 3/3 in replay; an unconstrained model 0/3.
+    name: "deixis to the room is not a follow-up — a new subject goes home",
+    sessions: [
+      session({
+        id: "sess-tv",
+        title: "sorozat letöltés",
+        workspace: join(PROJECTS_ROOT, "tvtime-migration"),
+        updated_at: minutesAgo(2),
+      }),
+    ],
+    spoken: [spoke("sess-tv", "A Star Trek rész letöltése kész, magyar szinkronnal.", minutesAgo(2))],
+    utterance: "Ez az itt mellettem a vendégem. Neki köszönj!",
+    scripted: [
+      {
+        action: "new",
+        cwd: "HOME_DIR",
+        request: "Köszönj a mellettem álló vendégemnek!",
+        ack: "Köszönök neki.",
+      },
+    ],
+    expect: { action: "new", cwd: "HOME_DIR" },
+  },
+  {
     name: "content match wakes a sleeping session over a fresher unrelated one",
     sessions: [
       session({ id: "sess-fresh", title: "calendar tidy-up", updated_at: minutesAgo(2) }),

@@ -13,6 +13,8 @@
 import type { PoolSession, SessionStatus } from "../omnigent/parse.ts";
 import type { SpokenLogEntry } from "../contracts/spoken-log.ts";
 import type { LedgerHit } from "./ledger.ts";
+import type { DecisionLogEntry } from "../contracts/decision.ts";
+import { buildExchanges, type Exchange } from "./exchanges.ts";
 import type { DispatchEvent } from "./decision-log.ts";
 
 /** How many spoken lines per session the model sees. Enough to recognise, short enough to scan. */
@@ -58,6 +60,8 @@ export interface RoutingContext {
   ledger_matches: LedgerMatch[];
   /** Added by a tier-3 peek round; empty until one happens. */
   peeks: PeekExtract[];
+  /** The dialogue so far, derived from the two event logs — never stored anywhere. */
+  recent_exchanges: Exchange[];
   most_recent: RecentInteraction | null;
   /** Absolute root the project names hang off. Without it the model has to guess a prefix. */
   projects_root: string;
@@ -74,6 +78,8 @@ export interface ContextInput {
   sessions: PoolSession[];
   spoken: SpokenLogEntry[];
   dispatches: DispatchEvent[];
+  /** Full decision entries, for the exchanges view; the dispatches above drive recency. */
+  decisions?: DecisionLogEntry[];
   projectsRoot: string;
   projectDirs: string[];
   homeDir: string;
@@ -107,6 +113,11 @@ export function buildContext(input: ContextInput): RoutingContext {
     candidates,
     ledger_matches: [],
     peeks: [],
+    recent_exchanges: buildExchanges({
+      decisions: input.decisions ?? [],
+      spoken: input.spoken,
+      now: input.now,
+    }),
     most_recent: mostRecent,
     projects_root: input.projectsRoot,
     project_dirs: input.projectDirs,

@@ -16,7 +16,7 @@ import type { RoutingContext } from "./context.ts";
  * Bumped whenever the wording changes. The live regression run records it next to the model
  * id, so a table result can be attributed to a specific prompt rather than to "the router".
  */
-export const PROMPT_VERSION = "2026-08-15.2";
+export const PROMPT_VERSION = "2026-08-15.3";
 
 export const SYSTEM_PROMPT = `You are the router of a voice bridge. A person speaks a request out loud; your only job is to decide WHERE it goes.
 
@@ -34,7 +34,7 @@ Any of the first three may also carry "candidates":[{"session_id":"…","reason"
 
 Deliberate in this order and stop at the first that fits:
 
-1. FOLLOW-UP. If there is a most recent interaction inside the follow-up window, and the utterance does not stand on its own — it refers back ("and the other one too", "yes, do it", "no, the second one"), or continues obviously from what that session just said — continue that session.
+1. FOLLOW-UP. If there is a most recent interaction inside the follow-up window, and the utterance continues that conversation's own subject — it refers back to it ("and the other one too", "yes, do it", "no, the second one"), or picks up what that exchange was about (see RECENT EXCHANGES) — continue that session. But an utterance that brings a subject of its own — a person in the room, a new topic unrelated to that exchange — is NOT a follow-up, however recent the interaction and however many pronouns it carries: pronouns can point at the speaker's physical surroundings rather than at the conversation ("this here next to me is my guest, say hi to him" is about the room, not about the transcript). When the subject is new, keep going down this list.
 2. CONTENT MATCH. Otherwise, if a candidate session is clearly about the same thing as the utterance — by its title, its workspace, or what it last spoke — continue that session. Recency breaks a tie. A sleeping session is a normal target: a message wakes it and its whole conversation is still there.
 3. PEEK. Otherwise, if two candidates both plausibly own the utterance and their titles and spoken lines do not settle it, answer with your best guess plus "candidates" naming the two. You will be asked again with an extract from the end of each conversation. This happens at most once, so use it when looking closer would actually change the answer.
 4. LEDGER LOOKUP. Otherwise, if the utterance clearly refers back to earlier work ("that subtitle thing from July", "the session where we fixed the invoices") and no candidate matches, answer {"action":"lookup_ledger","query":"…"} with a few distinctive words. The full spoken ledger is searched — it has no time horizon, unlike the candidate list — and you will be asked again with whatever it found. This also happens at most once.
@@ -54,6 +54,7 @@ export function buildUserPrompt(context: RoutingContext, utterance: string, now:
     `FOLLOW-UP WINDOW: ${context.followup_window_min} minutes`,
     `MOST RECENT INTERACTION: ${describeMostRecent(context)}`,
     `HOME DIRECTORY: ${context.home_dir}`,
+    ...exchangesSection(context),
     "",
     `CANDIDATE SESSIONS (active in the last ${context.candidate_window_days} days, newest first):`,
     context.candidates.length === 0
@@ -99,6 +100,25 @@ function describeCandidate(candidate: {
       ? "  (has not spoken)"
       : candidate.spoken_tail.map((line) => `  spoke: "${line}"`).join("\n");
   return `${header}\n${tail}`;
+}
+
+/** The dialogue so far, as linked exchanges — what was asked, where it went, what came back. */
+function exchangesSection(context: RoutingContext): string[] {
+  if (context.recent_exchanges.length === 0) return [];
+  return [
+    "",
+    "RECENT EXCHANGES (what was asked and what came back, oldest first):",
+    context.recent_exchanges
+      .map((exchange) => {
+        const target =
+          exchange.action === "clarify"
+            ? "clarify"
+            : `${exchange.action} ${exchange.target_session_id ?? "(not executed)"}`;
+        const reply = exchange.reply === null ? "(no spoken reply yet)" : `"${exchange.reply}"`;
+        return `- ${exchange.minutes_ago}m ago: "${exchange.utterance}" → ${target} → ${reply}`;
+      })
+      .join("\n"),
+  ];
 }
 
 /** Only rendered after a reach-back round: sessions the candidate window had hidden. */
