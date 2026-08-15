@@ -96,3 +96,11 @@ tell the two apart and had to guess the medium of its answer; the first real day
 that failure — a voice question answered in markdown, in silence. Migration note: sessions spawned
 before the amendment carry the older convention text in their system prompt (there is no way to
 re-inject it), so the rule fully lands for sessions born from now on; the old pool ages out.
+
+**Speech comes in two sizes** (amended 2026-08-15, same day, second failure). The convention
+distinguishes *reporting on work* — one plain sentence, as before — from *the answer itself being
+the thing to hear* (an explanation, a recap, anything the request wants read out): the whole
+answer, split into paragraph-sized `bobsay` calls that the playback lock plays back to back. The
+original text knew only the one-sentence report, so a spoken "refresh my memory of these movies"
+got a single sentence while the real answer sat unread in markdown — and when explicitly asked to
+read it out, the C1 cap of that era cut both chunks mid-sentence. Same migration note as above.
