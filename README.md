@@ -101,7 +101,7 @@ directory. **Changing one is a deliberate commit touching the contract and every
 | **C3** | `~/bob/defaults.yaml` | One loader, both CLIs, strict schema — a typo'd key is a hard error, not a silent default. |
 | **C4** | Omnigent client | The only module that speaks HTTP. Readers degrade unknown values instead of throwing; a missing session id is the one fatal defect. |
 | **C5** | router decision | A discriminated union, so a structurally valid but *unexecutable* decision is impossible. Executability (does the session exist, is the path a directory?) is checked separately, before any side effect. |
-| **C6** | speak-on-finish | One canonical text in `~/bob/CLAUDE.md`, injected verbatim into every spawned session. The session id rides the first message in a delimited block the convention marks as transport metadata, never content. |
+| **C6** | speak-on-finish | One canonical text in `~/bob/CLAUDE.md`, injected verbatim into every spawned session. A delimited block rides **every** routed message: it carries the session id, and — since only the router writes it — marks the request as *spoken*, which is what tells the session to answer out loud. The convention marks it transport metadata, never content. |
 
 **The router addresses; it never interprets the domain.** It answers two questions — does a
 pooled session already hold this context, and if not, where should a new one be born — and

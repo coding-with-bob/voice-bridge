@@ -12,7 +12,7 @@ import { homedir } from "node:os";
 import { dirname, isAbsolute, join, resolve } from "node:path";
 import type { RouterDecision } from "../contracts/decision.ts";
 import type { OmnigentClient } from "../omnigent/client.ts";
-import { firstMessage } from "./convention.ts";
+import { routedMessage } from "./convention.ts";
 
 export type ExecutabilityResult = { ok: true } | { ok: false; reason: string };
 
@@ -111,8 +111,14 @@ export async function executeDecision(
 ): Promise<ExecutionOutcome> {
   switch (decision.action) {
     case "continue":
-      // Reviving a stopped session is free: the message itself relaunches it.
-      await deps.client.postMessage(decision.session_id, decision.request);
+      // Reviving a stopped session is free: the message itself relaunches it. The voice
+      // marker rides along — without it the session cannot tell a spoken request from a
+      // typed one, and answers the wrong medium (observed on first real use: a voice
+      // question answered in markdown, in silence).
+      await deps.client.postMessage(
+        decision.session_id,
+        routedMessage(decision.session_id, decision.request),
+      );
       return { targetSessionId: decision.session_id, executed: true };
 
     case "new": {
@@ -121,7 +127,7 @@ export async function executeDecision(
         permissionMode: deps.permissionMode,
         appendSystemPrompt: deps.conventionText,
       });
-      await deps.client.postMessage(id, firstMessage(id, decision.request));
+      await deps.client.postMessage(id, routedMessage(id, decision.request));
       return { targetSessionId: id, executed: true };
     }
 

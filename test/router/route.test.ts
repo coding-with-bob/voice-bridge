@@ -80,7 +80,9 @@ describe("route — continue", () => {
     const result = await route("and the other one too", deps);
 
     expect(result.decision.action).toBe("continue");
-    expect(messages).toEqual([{ id: "s1", text: "do it" }]);
+    expect(messages).toEqual([
+      { id: "s1", text: "[bob metadata — not part of the request: your session id is s1]\n\ndo it" },
+    ]);
     expect(spoken).toEqual(["Passing it on."]);
     expect(result.executed).toBe(true);
     expect(result.target_session_id).toBe("s1");

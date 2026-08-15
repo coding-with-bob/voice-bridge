@@ -73,8 +73,8 @@ One canonical text, stored at `~/bob/CLAUDE.md` and reused **verbatim** by the r
 (injected via `--append-system-prompt`; sessions born in `~/bob` also pick it up from the CLAUDE.md).
 
 The convention text is **generic** — it carries no concrete session id, because the id only exists
-after `createSession` returns. The router therefore prefixes the first posted message with a
-delimited metadata block:
+after `createSession` returns. The router therefore prefixes **every message it delivers** —
+`continue` included, not just the first on spawn — with a delimited metadata block:
 
 ```
 [bob metadata — not part of the request: your session id is <id>]
@@ -82,3 +82,12 @@ delimited metadata block:
 
 The convention states that this block is transport metadata: never quote it, never treat it as
 content — so a "write this request verbatim to a file" task does not capture it.
+
+**The block is also the voice signal** (amended 2026-08-15, after first real use). Only the router
+ever writes it, so a request carrying it arrived *spoken* — the person may not be watching any
+terminal — and the convention tells the session to speak its answer with `bobsay` on top of
+whatever it prints. A typed message never carries the block. Before this, a session had no way to
+tell the two apart and had to guess the medium of its answer; the first real day produced exactly
+that failure — a voice question answered in markdown, in silence. Migration note: sessions spawned
+before the amendment carry the older convention text in their system prompt (there is no way to
+re-inject it), so the rule fully lands for sessions born from now on; the old pool ages out.

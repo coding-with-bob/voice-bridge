@@ -56,16 +56,19 @@ export function metadataBlock(sessionId: string): string {
 const METADATA_BLOCK_SHAPE = /\[bob metadata[^\]]*\]/g;
 
 /**
- * The block claims to be transport metadata. That claim is only worth something if exactly
- * one block can ever appear — otherwise a request carrying its own would leave the session
- * with two session ids and no rule for choosing. It would probably choose right; "probably"
- * is not what a contract is for, and the failure would be quiet and self-propagating, since
- * a misattributed ledger line goes on to misroute later utterances.
+ * The block rides EVERY message the router delivers, not just the first. It does two jobs:
+ * it carries the session id (repeated, so a long conversation never loses it), and — since
+ * only the router ever writes it — it marks the request as having arrived by voice, which
+ * is what tells the session to speak its answer rather than assume someone is watching a
+ * terminal. A typed message never carries the block; that is the whole signal.
  *
- * So the shape is stripped from the request before ours is prepended. Nothing legitimate is
- * lost: no real request needs to contain that literal bracket.
+ * Exactly one block may ever appear: a request carrying its own would leave the session
+ * with two session ids and no rule for choosing, and a wrong --session writes a
+ * misattributed ledger line that goes on to misroute later utterances. So the shape is
+ * stripped from the request before ours is prepended. Nothing legitimate is lost: no real
+ * request needs to contain that literal bracket.
  */
-export function firstMessage(sessionId: string, request: string): string {
+export function routedMessage(sessionId: string, request: string): string {
   const cleaned = request.replace(METADATA_BLOCK_SHAPE, "").replace(/\s+/g, " ").trim();
   return `${metadataBlock(sessionId)}\n\n${cleaned}`;
 }
