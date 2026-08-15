@@ -9,7 +9,9 @@
  * `--allowed-tools ""` and `--strict-mcp-config` finish the job: this call thinks, it does
  * not act.
  */
+import { existsSync } from "node:fs";
 import { tmpdir } from "node:os";
+import { join } from "node:path";
 
 export class ModelCallError extends Error {
   override name = "ModelCallError";
@@ -30,9 +32,33 @@ export interface ModelResponse {
 
 export type ModelCall = (request: ModelRequest) => Promise<ModelResponse>;
 
-export function claudeCliArgs(model: string, system: string): string[] {
+/**
+ * How to start Claude Code so that it is actually authenticated.
+ *
+ * On this machine the subscription auth reaches Claude Code through the local llmp proxy,
+ * and the proxy's environment is injected by whoever launches it. Plain `claude` therefore
+ * works in a terminal that inherited that environment and reports "Not logged in" anywhere
+ * else — including under Raycast and launchd, which is precisely where the router runs.
+ * `llmp claude` carries its own credentials, so it works from a bare environment.
+ *
+ * Falls back to plain `claude` when there is no llmp: on a machine with an ordinary Claude
+ * Code login that is the correct launcher.
+ */
+export function claudeLauncher(env: Record<string, string | undefined> = process.env): string[] {
+  return onPath("llmp", env) ? ["llmp", "claude"] : ["claude"];
+}
+
+function onPath(command: string, env: Record<string, string | undefined>): boolean {
+  return (env.PATH ?? "").split(":").some((dir) => dir !== "" && existsSync(join(dir, command)));
+}
+
+export function claudeCliArgs(
+  model: string,
+  system: string,
+  launcher: string[] = claudeLauncher(),
+): string[] {
   return [
-    "claude",
+    ...launcher,
     "-p",
     "--model",
     model,
@@ -74,7 +100,8 @@ export const claudeCliCall: ModelCall = async (request) => {
   const latencyMs = Date.now() - started;
   if (code !== 0) {
     throw new ModelCallError(
-      `claude -p exited ${code} after ${latencyMs}ms${stderr.trim() ? `: ${stderr.trim()}` : ""}`,
+      `${claudeLauncher().join(" ")} -p exited ${code} after ${latencyMs}ms` +
+        `${stderr.trim() ? `: ${stderr.trim()}` : ""}`,
     );
   }
   return { raw: unwrapCliResult(stdout), latencyMs };

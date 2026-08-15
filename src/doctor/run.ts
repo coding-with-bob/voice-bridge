@@ -7,6 +7,7 @@
  */
 import { isLocalhostOnly } from "./bind.ts";
 import { readConvention } from "../router/convention.ts";
+import { claudeLauncher, extractJson, type ModelCall } from "../router/model.ts";
 import { CLAUDE_NATIVE_HARNESS, type OmnigentClient } from "../omnigent/client.ts";
 
 /** The spike baseline a fresh session met; slower than this is worth knowing about. */
@@ -14,6 +15,7 @@ const SPIKE_BASELINE_MS = 5_000;
 const DEFAULT_SMOKE_TIMEOUT_MS = 30_000;
 const SMOKE_POLL_MS = 500;
 const SMOKE_PROMPT = "Reply with exactly the word: pong";
+const ROUTER_CHECK_TIMEOUT_MS = 60_000;
 
 export interface CheckResult {
   name: string;
@@ -48,6 +50,9 @@ export interface DoctorDeps {
   readListenHosts: (port: number) => Promise<string[]>;
   /** Run the spawn smoke test (skipped by `--quick`). */
   spawn: boolean;
+  /** The router's decision call, exercised the same way routing exercises it. */
+  modelCall: ModelCall;
+  routerModel: string;
   smokeTimeoutMs?: number;
   sleep?: (ms: number) => Promise<void>;
   now?: () => number;
@@ -61,6 +66,7 @@ export async function runDoctor(deps: DoctorDeps): Promise<DoctorReport> {
     await bindCheck(deps),
     await hostCheck(deps),
     await agentCheck(deps),
+    await routerCheck(deps),
   ];
   if (deps.spawn) checks.push(await spawnCheck(deps));
 
@@ -178,6 +184,49 @@ async function agentCheck(deps: DoctorDeps): Promise<CheckResult> {
     };
   } catch (error) {
     return { name: "agent", ok: false, detail: describe(error) };
+  }
+}
+
+/**
+ * The decision call, exercised exactly as routing exercises it.
+ *
+ * This check exists because of a failure it would have caught: `bob route` launched from a
+ * bare environment (Raycast, launchd) fell back on every single utterance, because the
+ * Claude Code launcher it used is only authenticated where the proxy environment was
+ * inherited. Routing degraded politely and said nothing about why — the deterministic
+ * fallback is designed not to shout — so nothing surfaced until someone read the log.
+ * Doctor is the place that surfaces it.
+ */
+async function routerCheck(deps: DoctorDeps): Promise<CheckResult> {
+  const launcher = claudeLauncher().join(" ");
+  try {
+    const response = await deps.modelCall({
+      system: 'You are a JSON echo. Reply with exactly {"action":"clarify","question":"ok"} and nothing else.',
+      user: "ping",
+      model: deps.routerModel,
+      timeoutMs: ROUTER_CHECK_TIMEOUT_MS,
+    });
+    const parsed = extractJson(response.raw);
+    if (parsed === null) {
+      return {
+        name: "router",
+        ok: false,
+        detail: `${launcher} answered, but not with JSON: ${truncate(response.raw)}`,
+        hint: "The decision call would fall back on every utterance. Check the model name in defaults.yaml.",
+      };
+    }
+    return {
+      name: "router",
+      ok: true,
+      detail: `${launcher} · ${deps.routerModel} · decided in ${response.latencyMs}ms`,
+    };
+  } catch (error) {
+    return {
+      name: "router",
+      ok: false,
+      detail: `${launcher}: ${describe(error)}`,
+      hint: `Every utterance would fall back. Check that \`${launcher} -p\` runs authenticated from a bare shell.`,
+    };
   }
 }
 

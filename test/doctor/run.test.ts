@@ -27,6 +27,8 @@ const deps = (overrides: Partial<DoctorDeps> = {}): DoctorDeps => ({
   configSource: "file",
   conventionFile: join(homedir(), "bob", "CLAUDE.md"),
   readListenHosts: async () => ["127.0.0.1"],
+  modelCall: async () => ({ raw: '{"action":"clarify","question":"ok"}', latencyMs: 900 }),
+  routerModel: "claude-opus-5",
   sleep: async () => {},
   spawn: true,
   ...overrides,
@@ -46,6 +48,7 @@ describe("runDoctor — a healthy platform", () => {
       "bind",
       "host",
       "agent",
+      "router",
       "spawn",
     ]);
   });
@@ -137,7 +140,36 @@ describe("runDoctor — every failure explains its fix", () => {
     const report = await runDoctor(
       deps({ client: stubClient({ health: async () => ({ ok: false, detail: "down" }) }) }),
     );
-    expect(report.checks).toHaveLength(7);
+    expect(report.checks).toHaveLength(8);
+  });
+});
+
+describe("runDoctor — the router's own call", () => {
+  test("a launcher that cannot authenticate is caught here, not at the microphone", async () => {
+    const report = await runDoctor(
+      deps({
+        modelCall: async () => {
+          throw new Error("claude -p exited 1: Not logged in · Please run /login");
+        },
+      }),
+    );
+    expect(check(report, "router").ok).toBe(false);
+    expect(check(report, "router").detail).toContain("Not logged in");
+    expect(check(report, "router").hint).toContain("Every utterance would fall back");
+  });
+
+  test("an answer that is not JSON fails the check too", async () => {
+    const report = await runDoctor(
+      deps({ modelCall: async () => ({ raw: "I am not sure, honestly.", latencyMs: 800 }) }),
+    );
+    expect(check(report, "router").ok).toBe(false);
+    expect(check(report, "router").detail).toContain("not with JSON");
+  });
+
+  test("a healthy call reports the launcher and the model", async () => {
+    const report = await runDoctor(deps());
+    expect(check(report, "router").ok).toBe(true);
+    expect(check(report, "router").detail).toContain("claude-opus-5");
   });
 });
 

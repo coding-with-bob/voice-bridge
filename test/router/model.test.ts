@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { extractJson, claudeCliArgs } from "../../src/router/model.ts";
+import { extractJson, claudeCliArgs, claudeLauncher } from "../../src/router/model.ts";
 
 describe("extractJson", () => {
   test("reads a bare object", () => {
@@ -48,9 +48,25 @@ describe("extractJson", () => {
   });
 });
 
+describe("claudeLauncher", () => {
+  /**
+   * Regression: `bob route` from a bare environment (Raycast, launchd) failed on every
+   * utterance because plain `claude` is only logged in where the llmp proxy environment was
+   * inherited. `llmp claude` carries its own credentials.
+   */
+  test("prefers llmp claude when llmp is on PATH", () => {
+    expect(claudeLauncher({ PATH: "/Users/felho/.local/bin:/usr/bin" })).toEqual(["llmp", "claude"]);
+  });
+
+  test("falls back to plain claude where there is no llmp", () => {
+    expect(claudeLauncher({ PATH: "/usr/bin:/bin" })).toEqual(["claude"]);
+    expect(claudeLauncher({})).toEqual(["claude"]);
+  });
+});
+
 describe("claudeCliArgs", () => {
   test("isolates the call from the owner's settings, memory and tools", () => {
-    const args = claudeCliArgs("claude-opus-5", "system text");
+    const args = claudeCliArgs("claude-opus-5", "system text", ["claude"]);
     expect(args).toContain("--setting-sources");
     expect(args).toContain("--strict-mcp-config");
     expect(args[args.indexOf("--allowed-tools") + 1]).toBe("");
@@ -58,9 +74,13 @@ describe("claudeCliArgs", () => {
   });
 
   test("passes the model and the system prompt through", () => {
-    const args = claudeCliArgs("some-model", "system text");
+    const args = claudeCliArgs("some-model", "system text", ["claude"]);
     expect(args[args.indexOf("--model") + 1]).toBe("some-model");
     expect(args[args.indexOf("--system-prompt") + 1]).toBe("system text");
     expect(args).toContain("-p");
+  });
+
+  test("puts the launcher first, whatever it is", () => {
+    expect(claudeCliArgs("m", "s", ["llmp", "claude"]).slice(0, 3)).toEqual(["llmp", "claude", "-p"]);
   });
 });
