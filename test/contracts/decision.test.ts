@@ -110,6 +110,7 @@ describe("C5 decision log entry", () => {
     decision: { action: "continue", session_id: "sess-1", request: "r", ack: "a" },
     latency_ms: 1840,
     model: "claude-opus-5",
+    target_session_id: "sess-1",
     executed: true,
     reachback: false,
     peeked: false,
@@ -120,8 +121,25 @@ describe("C5 decision log entry", () => {
     expect(DecisionLogEntrySchema.parse(entry).executed).toBe(true);
   });
 
-  test("requires the flags that drive recency and reporting", () => {
-    for (const key of ["ts", "executed", "reachback", "peeked", "fallback"] as const) {
+  test("accepts a null target when nothing was dispatched", () => {
+    const clarified = {
+      ...entry,
+      decision: { action: "clarify", question: "Which project?" },
+      target_session_id: null,
+      executed: false,
+    };
+    expect(DecisionLogEntrySchema.parse(clarified).target_session_id).toBeNull();
+  });
+
+  test("requires the fields that drive recency and reporting", () => {
+    for (const key of [
+      "ts",
+      "target_session_id",
+      "executed",
+      "reachback",
+      "peeked",
+      "fallback",
+    ] as const) {
       const { [key]: _dropped, ...rest } = entry;
       expect(() => DecisionLogEntrySchema.parse(rest)).toThrow();
     }

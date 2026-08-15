@@ -99,6 +99,13 @@ export const DecisionLogEntrySchema = z.object({
   decision: RouterDecisionSchema.nullable(),
   latency_ms: z.number().nonnegative(),
   model: z.string(),
+  /**
+   * The session the utterance was actually delivered to: the existing one for `continue`,
+   * the freshly created one for `new`, null when nothing was dispatched. C2 derives "most
+   * recent interaction" from these entries, and for a `new` decision the target only exists
+   * after createSession returns — so it has to be recorded here rather than read off `decision`.
+   */
+  target_session_id: z.string().nullable(),
   /** Whether the action was actually carried out (a dispatch happened). */
   executed: z.boolean(),
   /** `continue` to a session inactive beyond the candidate window. */
