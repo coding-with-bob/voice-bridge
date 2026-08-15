@@ -2,7 +2,8 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { mkdtempSync, rmSync, writeFileSync, utimesSync, readdirSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { acquireLock, LockTimeoutError } from "../../src/say/lock.ts";
+import { acquireLock, DEFAULT_WAIT_CEILING_MS, LockTimeoutError } from "../../src/say/lock.ts";
+import { MAX_SPOKEN_CHARS } from "../../src/say/clean.ts";
 
 let dir: string;
 
@@ -120,5 +121,15 @@ describe("acquireLock — timeout", () => {
     await acquireLock(dir, { ...fast, timeoutMs: 60 }).catch(() => {});
     held.release();
     expect(readdirSync(dir)).toHaveLength(0);
+  });
+
+  test("the default ceiling outlives a queue of maximum-length spoken answers", () => {
+    // The deadline only ever fires against a LIVE holder — a dead one is pruned by the
+    // stale net within a minute — so it must exceed legitimate playback, not race it.
+    // The 120s era timed out mid-queue once content-length speech existed (2026-08-15).
+    const GENEROUS_MS_PER_CHAR = 150; // observed ElevenLabs rate ≈ 90-100 ms per character
+    expect(DEFAULT_WAIT_CEILING_MS).toBeGreaterThanOrEqual(
+      2 * MAX_SPOKEN_CHARS * GENEROUS_MS_PER_CHAR,
+    );
   });
 });

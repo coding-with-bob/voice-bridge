@@ -88,6 +88,18 @@ describe("route — continue", () => {
     expect(result.target_session_id).toBe("s1");
   });
 
+  test("the decision entry is on disk before the ack starts playing", async () => {
+    // A long playback queue may hold the ack for minutes (the lock ceiling is generous on
+    // purpose since content-length speech exists); the next routing must not wait for the
+    // ack to see this decision in its context.
+    let entriesWhenAckSpoke = -1;
+    const { deps } = harness({
+      speak: async () => void (entriesWhenAckSpoke = logOf().length),
+    });
+    await route("and the other one too", deps);
+    expect(entriesWhenAckSpoke).toBe(1);
+  });
+
   test("logs the decision with everything needed to reconstruct it later", async () => {
     const { deps } = harness();
     await route("and the other one too", deps);

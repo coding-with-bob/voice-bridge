@@ -30,7 +30,17 @@ export interface LockOptions {
   timeoutMs?: number;
 }
 
-const DEFAULTS = { staleMs: 60_000, pollMs: 25, timeoutMs: 120_000 } as const;
+/**
+ * The wait deadline is a last-resort ceiling, not a schedule. A dead holder is pruned by
+ * the stale net within `staleMs`, so this deadline only ever fires against a holder that
+ * is alive and heartbeating — which is either legitimate long playback (a spoken answer
+ * runs minutes; several may queue) or a genuinely wedged process. It must therefore
+ * outlive any queue of real speech; the invariant test ties it to MAX_SPOKEN_CHARS.
+ * On breach the caller speaks anyway and says so — overlap, never a lost sentence.
+ */
+export const DEFAULT_WAIT_CEILING_MS = 1_800_000;
+
+const DEFAULTS = { staleMs: 60_000, pollMs: 25, timeoutMs: DEFAULT_WAIT_CEILING_MS } as const;
 const TICKET_SUFFIX = ".ticket";
 
 /** Distinguishes tickets taken within the same millisecond by the same process. */

@@ -125,15 +125,6 @@ async function routeUnderLock(
   }
 
   const spoken = spokenTextOf(decision);
-  if (deps.dryRun !== true) {
-    try {
-      await deps.speak(spoken);
-    } catch (error) {
-      // The dispatch already happened; losing the ack must not lose the log entry too.
-      (deps.warn ?? console.error)(`bob route: could not speak the ack: ${describe(error)}`);
-    }
-  }
-
   const reach = describeReachback(decision, targetSessionId, attempt, deps);
 
   const entry: DecisionLogEntry = {
@@ -152,6 +143,17 @@ async function routeUnderLock(
     ...(fallbackReason === undefined ? {} : { fallback_reason: fallbackReason }),
   };
   appendDecisionEntry(deps.paths.decisionLog, entry);
+
+  // The ack plays after the entry is on disk: a long playback queue may hold the lock for
+  // minutes, and the next routing reads its context from the log, not from this process.
+  if (deps.dryRun !== true) {
+    try {
+      await deps.speak(spoken);
+    } catch (error) {
+      // The dispatch and the log entry are already safe; the ack alone is expendable.
+      (deps.warn ?? console.error)(`bob route: could not speak the ack: ${describe(error)}`);
+    }
+  }
 
   return {
     decision,
