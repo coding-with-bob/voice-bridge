@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { cleanForSpeech, MAX_SPOKEN_CHARS } from "../../src/say/clean.ts";
+import { capForSpeech, cleanForSpeech, MAX_SPOKEN_CHARS } from "../../src/say/clean.ts";
 
 describe("cleanForSpeech — structural markdown goes away", () => {
   test("drops fenced code blocks entirely", () => {
@@ -63,16 +63,31 @@ describe("cleanForSpeech — emphasis markers survive for prosody", () => {
   });
 });
 
-describe("cleanForSpeech — length cap", () => {
-  test("leaves normal-length text untouched", () => {
-    const text = "A perfectly ordinary spoken summary.";
+describe("cleanForSpeech — no cap of its own", () => {
+  test("cleaning is a pure transform: long text passes through whole", () => {
+    const text = "word ".repeat(3 * MAX_SPOKEN_CHARS).trim();
     expect(cleanForSpeech(text)).toBe(text);
   });
+});
 
-  test("truncates overlong text at a word boundary and marks the cut", () => {
-    const cleaned = cleanForSpeech("word ".repeat(400));
-    expect(cleaned.length).toBeLessThanOrEqual(MAX_SPOKEN_CHARS + 1);
-    expect(cleaned.endsWith("…")).toBe(true);
-    expect(cleaned).not.toContain("wor…");
+describe("capForSpeech — the runaway guard", () => {
+  test("leaves text at or under the cap untouched and reports nothing dropped", () => {
+    const text = "a".repeat(MAX_SPOKEN_CHARS);
+    expect(capForSpeech(text)).toEqual({ text, dropped: 0 });
+  });
+
+  test("cuts overlong text at a word boundary, marks the cut, and counts what fell", () => {
+    const raw = "word ".repeat(2 * MAX_SPOKEN_CHARS).trim();
+    const { text, dropped } = capForSpeech(raw);
+    expect(text.length).toBeLessThanOrEqual(MAX_SPOKEN_CHARS + 1);
+    expect(text.endsWith("…")).toBe(true);
+    expect(text).not.toContain("wor…");
+    expect(dropped).toBe(raw.length - (text.length - "…".length));
+  });
+
+  test("the cap fits real spoken content — a two-minute recap is not a runaway", () => {
+    // The 600-char era cut a movie recap mid-sentence (2026-08-15). The cap is
+    // runaway protection now, not a format rule: whole paragraphs must fit.
+    expect(MAX_SPOKEN_CHARS).toBeGreaterThanOrEqual(5_000);
   });
 });

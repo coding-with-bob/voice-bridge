@@ -27,9 +27,14 @@ bobsay [--session <id>] [--voice <engine:voice>] [--engine elevenlabs|say] [--js
 - **Exit 0** = spoken (or queued and then spoken). **Nonzero** = could not speak at all, after fallback.
   Sub-codes: `1` = playback failed even after the fallback; `2` = the call was rejected before any
   audio (bad voice reference, contradicting `--engine`, malformed config, nothing speakable left).
-- `--json` emits `{spoken_text, engine, voice, log_path}`.
+- `--json` emits `{spoken_text, engine, voice, log_path, truncated}`.
 - Side effects, in this order: play audio (serialized via a file lock) → **on successful playback**
   append the C2 log line. The log records only what was actually heard; a failed playback writes no line.
+- A single call is capped at `MAX_SPOKEN_CHARS` (5,000 — runaway protection, roughly five minutes of
+  audio, **not** a format rule). A cut is **never silent**: stderr names how many characters fell and
+  tells the session to split into paragraph-sized calls, and `--json` reports `truncated: true`.
+  (Amended 2026-08-15: the original 600 was a summary-length rule and silently cut a real spoken
+  answer mid-sentence on the first day of content-length speech.)
 - **Sessionless calls** (no `--session`, e.g. router acks) log with `session_id: null`.
 - Fallback from ElevenLabs to `say` is **audible, never silent**: the sentence is still spoken, in
   the macOS voice, and the log names the engine that actually spoke.

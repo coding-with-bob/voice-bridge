@@ -204,6 +204,52 @@ describe("speak — nothing speakable", () => {
   });
 });
 
+describe("speak — the cap is loud, never silent", () => {
+  test("overlong text is cut, spoken, flagged, and the warning says how much fell", async () => {
+    const say = fakeEngine("say");
+    const warnings: string[] = [];
+    const result = await speak(
+      baseOptions({
+        text: "word ".repeat(2_000).trim(),
+        engines: { say, elevenlabs: fakeEngine("elevenlabs") },
+        warn: (message) => warnings.push(message),
+      }),
+    );
+
+    expect(result.truncated).toBe(true);
+    expect(result.spoken_text.endsWith("…")).toBe(true);
+    expect(say.spoken).toHaveLength(1);
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0]).toContain("characters past");
+    expect(warnings[0]).toContain("paragraph-sized");
+  });
+
+  test("the ledger records the capped text — what was heard, not what was sent", async () => {
+    const say = fakeEngine("say");
+    const result = await speak(
+      baseOptions({
+        text: "word ".repeat(2_000).trim(),
+        engines: { say, elevenlabs: fakeEngine("elevenlabs") },
+        warn: () => {},
+      }),
+    );
+    const lines = readLog(result.log_path);
+    expect(lines[0]!.text.endsWith("…")).toBe(true);
+  });
+
+  test("normal-length text reports truncated: false and warns about nothing", async () => {
+    const warnings: string[] = [];
+    const result = await speak(
+      baseOptions({
+        engines: { say: fakeEngine("say"), elevenlabs: fakeEngine("elevenlabs") },
+        warn: (message) => warnings.push(message),
+      }),
+    );
+    expect(result.truncated).toBe(false);
+    expect(warnings).toHaveLength(0);
+  });
+});
+
 describe("speak — serialisation", () => {
   test("playback happens while the lock is held, and the lock is released after", async () => {
     const lockDir = join(home, "state", "playback");

@@ -4,10 +4,19 @@
  * Emphasis markers (`**bold**`, `*emphasis*`) deliberately survive this step — prosody
  * consumes them next. Underscores are left alone: in this ecosystem they are identifier
  * characters (`route_decisions.jsonl`), not italics.
+ *
+ * Cleaning is a pure transform and never shortens content. The length cap is policy,
+ * not cleaning — `capForSpeech` below — and the pipeline that applies it is responsible
+ * for saying so out loud (C1: a cut is warned about, never silent).
  */
 
-/** Longer than this and it stops being a spoken summary. Cut at a word boundary, marked. */
-export const MAX_SPOKEN_CHARS = 600;
+/**
+ * Runaway protection, not a format rule: whole spoken answers — a recap, an explanation —
+ * must fit. At ElevenLabs speech rate this is roughly five minutes of audio; anything past
+ * it is almost certainly a document pasted into a mouth. (The 600-char era treated this as
+ * a summary-length rule and silently cut real content mid-sentence; 2026-08-15.)
+ */
+export const MAX_SPOKEN_CHARS = 5_000;
 
 const FENCED_BLOCK = /```[\s\S]*?```/g;
 const DANGLING_FENCE = /```[\s\S]*$/;
@@ -39,23 +48,22 @@ export function cleanForSpeech(raw: string): string {
     .map((line) => line.replace(/\s+/g, " ").trim())
     .filter((line) => line !== "");
 
-  const joined = lines
+  return lines
     .map((line, index) => (index < lines.length - 1 && !ENDS_A_CLAUSE.test(line) ? `${line}.` : line))
     .join(" ");
+}
 
-  return capLength(joined);
+/** Cut at a word boundary, mark the cut, and report how many characters fell. */
+export function capForSpeech(text: string): { text: string; dropped: number } {
+  if (text.length <= MAX_SPOKEN_CHARS) return { text, dropped: 0 };
+  const head = text.slice(0, MAX_SPOKEN_CHARS);
+  const lastSpace = head.lastIndexOf(" ");
+  const cut = (lastSpace > 0 ? head.slice(0, lastSpace) : head).replace(/[\s.,;:]+$/, "");
+  return { text: `${cut}…`, dropped: text.length - cut.length };
 }
 
 function stripLinePrefixes(line: string): string {
   let result = line;
   for (const prefix of LINE_PREFIXES) result = result.replace(prefix, "");
   return result;
-}
-
-function capLength(text: string): string {
-  if (text.length <= MAX_SPOKEN_CHARS) return text;
-  const head = text.slice(0, MAX_SPOKEN_CHARS);
-  const lastSpace = head.lastIndexOf(" ");
-  const cut = lastSpace > 0 ? head.slice(0, lastSpace) : head;
-  return `${cut.replace(/[\s.,;:]+$/, "")}…`;
 }

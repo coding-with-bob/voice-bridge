@@ -28,7 +28,7 @@ program
   .option("--session <id>", "the session speaking; omit for sessionless calls such as router acks")
   .option("--voice <engine:voice>", "override the configured default voice")
   .option("--engine <engine>", "force an engine: elevenlabs | say")
-  .option("--json", "emit {spoken_text, engine, voice, log_path}")
+  .option("--json", "emit {spoken_text, engine, voice, log_path, truncated}")
   .action(async (text: string, options: Record<string, string | boolean | undefined>) => {
     try {
       const { config } = loadConfig();

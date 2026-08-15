@@ -8,7 +8,7 @@
  *     in the macOS voice, and the log names the engine that really spoke.
  */
 import { join } from "node:path";
-import { cleanForSpeech } from "./clean.ts";
+import { capForSpeech, cleanForSpeech, MAX_SPOKEN_CHARS } from "./clean.ts";
 import { applyProsody } from "./prosody.ts";
 import { fallbackSayVoice, selectVoice } from "./select.ts";
 import { acquireLock, LockTimeoutError, type LockOptions } from "./lock.ts";
@@ -44,15 +44,24 @@ export interface SpeakResult {
   engine: Engine;
   voice: string;
   log_path: string;
+  /** True when the text ran past the cap and only its head was spoken. Never silent: a warning named the cut. */
+  truncated: boolean;
 }
 
 export async function speak(options: SpeakOptions): Promise<SpeakResult> {
   const now = options.now ?? (() => new Date());
   const warn = options.warn ?? ((message: string) => console.error(message));
 
-  const cleaned = cleanForSpeech(options.text);
-  if (cleaned === "") {
+  const fullText = cleanForSpeech(options.text);
+  if (fullText === "") {
     throw new NothingToSpeakError("Nothing speakable left after cleaning — refusing to speak.");
+  }
+  const { text: cleaned, dropped } = capForSpeech(fullText);
+  if (dropped > 0) {
+    warn(
+      `bobsay: the text ran ${dropped} characters past the ${MAX_SPOKEN_CHARS}-character cap — ` +
+        `only the first part will be spoken. Split long content into paragraph-sized bobsay calls.`,
+    );
   }
   const spokenText = applyProsody(cleaned, "plain");
 
@@ -84,7 +93,13 @@ export async function speak(options: SpeakOptions): Promise<SpeakResult> {
     spokenAt,
   );
 
-  return { spoken_text: spokenText, engine: actual.engine, voice: actual.voice, log_path: logPath };
+  return {
+    spoken_text: spokenText,
+    engine: actual.engine,
+    voice: actual.voice,
+    log_path: logPath,
+    truncated: dropped > 0,
+  };
 }
 
 /**
