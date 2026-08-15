@@ -45,6 +45,10 @@ ln -sf ~/.bun/bin/bobsay ~/.local/bin/bobsay
 `~/bob` is the state home: `defaults.yaml`, the ledgers, and the fallback workspace. It is its
 own git repo and holds no code.
 
+**It is also a transcript of everything you have ever said to the machine, and everything it has
+said back.** That is the point — reach-back reads it — but it means the repo has no business
+acquiring a remote without a deliberate decision. It has none today.
+
 ### 3. Voice (optional but the point)
 
 The default voice is `say:Tünde`, the macOS Hungarian system voice — no key, works immediately.
