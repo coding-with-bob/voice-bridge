@@ -19,6 +19,7 @@ import { appendGcEntry } from "../gc/log.ts";
 import { speak } from "../say/speak.ts";
 import { sayEngine } from "../say/engines/say.ts";
 import { elevenLabsEngine } from "../say/engines/elevenlabs.ts";
+import { separatePositional } from "./argv.ts";
 
 const program = new Command();
 
@@ -160,7 +161,17 @@ program
     }
   });
 
-await program.parseAsync();
+// Dictation can hand us an utterance that starts with a hyphen; the verb comes first,
+// so one positional is skipped before the text is protected.
+await program.parseAsync(
+  separatePositional(process.argv.slice(2), {
+    booleanOptions: ["--json", "--dry-run", "--quick", "--spoken", "--decisions", "--gc",
+                     "--reachbacks", "-h", "--help", "-V", "--version"],
+    valueOptions: ["-n", "--count"],
+    skipPositionals: 1,
+  }),
+  { from: "user" },
+);
 
 function printRouteResult(result: RouteResult, dryRun: boolean): void {
   const target =

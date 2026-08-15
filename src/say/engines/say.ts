@@ -8,9 +8,13 @@ import type { SpeechEngine } from "./engine.ts";
 
 const SAY_BINARY = "/usr/bin/say";
 
-/** Text is always a separate argv element: no shell, so no quoting hazard. */
+/**
+ * Text is always a separate argv element — no shell, so no quoting hazard — and always
+ * behind `--`, because a sentence may legitimately begin with a hyphen and `say` would
+ * otherwise read "-5 degrees tonight" as a flag and refuse to speak at all.
+ */
 export function sayArgs(text: string, voice: string): string[] {
-  return voice === SYSTEM_VOICE ? ["say", text] : ["say", "-v", voice, text];
+  return voice === SYSTEM_VOICE ? ["say", "--", text] : ["say", "-v", voice, "--", text];
 }
 
 export const sayEngine: SpeechEngine = {

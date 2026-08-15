@@ -13,6 +13,7 @@ import { speak, CouldNotSpeakError, NothingToSpeakError } from "../say/speak.ts"
 import { VoiceSelectionError } from "../say/select.ts";
 import { sayEngine } from "../say/engines/say.ts";
 import { elevenLabsEngine } from "../say/engines/elevenlabs.ts";
+import { separatePositional } from "./argv.ts";
 
 const EXIT_COULD_NOT_SPEAK = 1;
 const EXIT_BAD_CALL = 2;
@@ -47,7 +48,14 @@ program
     }
   });
 
-await program.parseAsync();
+// A spoken sentence may begin with a hyphen; commander would call that an unknown option.
+await program.parseAsync(
+  separatePositional(process.argv.slice(2), {
+    booleanOptions: ["--json", "-h", "--help", "-V", "--version"],
+    valueOptions: ["--session", "--voice", "--engine"],
+  }),
+  { from: "user" },
+);
 
 function exitCodeFor(error: unknown): number {
   const rejectedBeforeAudio =
