@@ -54,8 +54,9 @@ Three methods beyond the six C4 names, added deliberately in M2 and documented h
 smuggled in: `listAgents()` and `listHosts()` (`createSession` resolves the claude-native agent and
 an online host through them; `bob doctor` reports on both), and `deleteSession()` — reserved for
 doctor deleting the throwaway session it created itself, because a smoke-test session left in the
-pool becomes a routing candidate forever. The invariant that matters is unchanged: **no HTTP call
-lives outside this module.**
+pool becomes a routing candidate forever. The invariant that matters is unchanged: **no call to the
+Omnigent API lives outside this module.** (HTTP in general does live elsewhere — the
+ElevenLabs engine speaks to its own API. The rule is about one platform, not one protocol.)
 
 - `terminal_launch_args` carries `--permission-mode` / `--append-system-prompt`.
   **Verified live on 2026-08-15** (M2 risk probe): a marker planted via `--append-system-prompt`

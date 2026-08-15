@@ -221,6 +221,16 @@ describe("readConvention", () => {
     expect(convention).toContain("bobsay");
     expect(convention).toContain("--session");
   });
+
+  /**
+   * The convention tells the session what the metadata block looks like; the code produces
+   * it. Nothing but this test keeps the two from drifting apart, and the drift would be
+   * silent: sessions would be told to expect a block shaped unlike the one they receive.
+   */
+  test("the convention's example block is exactly what the code emits", () => {
+    const convention = readConvention(join(homedir(), "bob", "CLAUDE.md"));
+    expect(convention).toContain(metadataBlock("<id>"));
+  });
 });
 
 describe("firstMessage", () => {
