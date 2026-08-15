@@ -25,19 +25,43 @@ export function readSpokenEntries(
   return entries;
 }
 
+/** Below this length a word carries no signal ("in", "of", "the"). */
+const MIN_QUERY_WORD = 3;
+
+export interface LedgerHit {
+  entry: SpokenLogEntry;
+  /** How many distinct query words this line contains — the ranking signal. */
+  score: number;
+}
+
 /**
- * The reach-back path: every day, every line. A hit only counts when it names a session —
- * a sessionless router ack cannot be reached back to.
+ * The reach-back path: every day, every line, no horizon.
+ *
+ * Scored rather than all-or-nothing. The query comes from a model paraphrasing a spoken
+ * memory, so it will contain words the ledger line never had — the first live run asked for
+ * "conference badge printing July" against a line that said everything but "July", and an
+ * all-words rule found nothing. Partial matches are kept and ranked; a hit only counts when
+ * it names a session, since a sessionless router ack cannot be reached back to.
  */
-export function grepSpokenLedger(homeDir: string, query: string): SpokenLogEntry[] {
-  const words = query.toLowerCase().split(/\s+/).filter((word) => word !== "");
+export function grepSpokenLedger(homeDir: string, query: string): LedgerHit[] {
+  const words = [
+    ...new Set(
+      query
+        .toLowerCase()
+        .split(/[^\p{L}\p{N}]+/u)
+        .filter((word) => word.length >= MIN_QUERY_WORD),
+    ),
+  ];
   if (words.length === 0) return [];
 
-  return readSpokenEntries(homeDir, {}).filter((entry) => {
-    if (entry.session_id === null) return false;
+  const hits: LedgerHit[] = [];
+  for (const entry of readSpokenEntries(homeDir, {})) {
+    if (entry.session_id === null) continue;
     const haystack = entry.text.toLowerCase();
-    return words.every((word) => haystack.includes(word));
-  });
+    const score = words.filter((word) => haystack.includes(word)).length;
+    if (score > 0) hits.push({ entry, score });
+  }
+  return hits.sort((left, right) => right.score - left.score);
 }
 
 function dailyLogs(homeDir: string): Array<{ day: string; path: string }> {

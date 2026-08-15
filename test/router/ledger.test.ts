@@ -79,9 +79,11 @@ describe("grepSpokenLedger", () => {
     writeDay("2026-08-15", [line("2026-08-15T10:00:00.000Z", "today", "Subtitles again.")]);
   });
 
+  const sessionsOf = (query: string) =>
+    grepSpokenLedger(home, query).map((hit) => hit.entry.session_id);
+
   test("searches the whole ledger, with no horizon", () => {
-    const hits = grepSpokenLedger(home, "subtitle");
-    expect(hits.map((entry) => entry.session_id)).toEqual(["july", "today"]);
+    expect(sessionsOf("subtitle").sort()).toEqual(["july", "today"]);
   });
 
   test("is case-insensitive and matches on substrings", () => {
@@ -89,9 +91,27 @@ describe("grepSpokenLedger", () => {
     expect(grepSpokenLedger(home, "invoice")).toHaveLength(1);
   });
 
-  test("matches every word of a multi-word query, in any order", () => {
-    expect(grepSpokenLedger(home, "pipeline subtitle")).toHaveLength(1);
-    expect(grepSpokenLedger(home, "subtitle nonexistent")).toHaveLength(0);
+  /**
+   * Deliberately partial. The query is a model paraphrasing a spoken memory, so it will
+   * carry words the ledger line never had — the first live run searched for
+   * "conference badge printing July" against a line containing everything but "July",
+   * and an all-words rule found nothing at all.
+   */
+  test("scores partial matches instead of demanding every word", () => {
+    const hits = grepSpokenLedger(home, "subtitle nonexistent");
+    expect(hits).toHaveLength(2);
+    expect(hits[0]!.score).toBe(1);
+  });
+
+  test("ranks the line that matches more of the query first", () => {
+    const hits = grepSpokenLedger(home, "subtitle pipeline");
+    expect(hits[0]!.entry.session_id).toBe("july");
+    expect(hits[0]!.score).toBe(2);
+    expect(hits[1]!.score).toBe(1);
+  });
+
+  test("ignores words too short to carry signal", () => {
+    expect(grepSpokenLedger(home, "is a of")).toEqual([]);
   });
 
   test("an empty query matches nothing rather than everything", () => {
@@ -100,8 +120,6 @@ describe("grepSpokenLedger", () => {
 
   test("sessionless lines cannot be reached back to", () => {
     writeDay("2026-08-16", [line("2026-08-16T10:00:00.000Z", null, "subtitle ack")]);
-    expect(grepSpokenLedger(home, "subtitle").every((entry) => entry.session_id !== null)).toBe(
-      true,
-    );
+    expect(sessionsOf("subtitle").every((id) => id !== null)).toBe(true);
   });
 });
