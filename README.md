@@ -111,11 +111,17 @@ Two entries, one pipeline:
 bob doctor
 ```
 
-Eight checks, and a failure names the command that fixes it. **This is the mandatory
+Nine checks, and a failure names the command that fixes it. **This is the mandatory
 post-upgrade check** the platform contract requires — run it after every Omnigent upgrade, not
 just when something feels wrong. It re-verifies the loopback bind (the R-15 condition), the host
 daemon, the C6 convention, the router's real decision call, and a full create-message-answer
 round trip in a throwaway session it deletes afterwards.
+
+The last check, **repair**, covers the primitives a correction is built on: that a message comes
+back with a `pending_id`, and that an interrupt stops a turn this check started itself. The first
+is the one worth running for — without it a correction can never prove a running turn is its own,
+so it takes the conservative branch every time and silently stops interrupting anything. An
+upgrade could take that away and nothing else in the system would notice.
 
 ---
 

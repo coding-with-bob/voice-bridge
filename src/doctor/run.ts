@@ -15,6 +15,10 @@ const SPIKE_BASELINE_MS = 5_000;
 const DEFAULT_SMOKE_TIMEOUT_MS = 30_000;
 const SMOKE_POLL_MS = 500;
 const SMOKE_PROMPT = "Reply with exactly the word: pong";
+/** Long enough that the session is still generating while the repair check looks at it. */
+const REPAIR_PROBE_TASK = "Without using any tools, write out the numbers 1 to 300, one per line.";
+/** Each polling stage of the repair check gets this long; the check is bounded by design. */
+const REPAIR_BUDGET_MS = 10_000;
 const ROUTER_CHECK_TIMEOUT_MS = 60_000;
 
 export interface CheckResult {
@@ -41,6 +45,8 @@ export interface DoctorDeps {
     | "postMessage"
     | "sessionItems"
     | "deleteSession"
+    | "interrupt"
+    | "sessionState"
   >;
   omnigentUrl: string;
   homeDir: string;
@@ -60,6 +66,8 @@ export interface DoctorDeps {
   sessionModel: string;
   sessionEffort: string;
   smokeTimeoutMs?: number;
+  /** Bound on each polling stage of the repair check; tests shrink it. */
+  repairBudgetMs?: number;
   sleep?: (ms: number) => Promise<void>;
   now?: () => number;
 }
@@ -74,7 +82,10 @@ export async function runDoctor(deps: DoctorDeps): Promise<DoctorReport> {
     await agentCheck(deps),
     await routerCheck(deps),
   ];
-  if (deps.spawn) checks.push(await spawnCheck(deps));
+  if (deps.spawn) {
+    checks.push(await spawnCheck(deps));
+    checks.push(await repairCheck(deps));
+  }
 
   return { ok: checks.every((check) => check.ok), checks };
 }
@@ -306,6 +317,115 @@ async function spawnCheck(deps: DoctorDeps): Promise<CheckResult> {
       await deps.client.deleteSession(sessionId).catch(() => {});
     }
   }
+}
+
+/**
+ * The primitives a correction is built on, checked where a regression would otherwise be
+ * invisible.
+ *
+ * The one that matters is `pending_id`. Without it the repair can never prove the running
+ * turn is its own, so it takes the conservative branch every time and silently stops
+ * interrupting anything — a platform change with no symptom at all. The interrupt is checked
+ * against a turn this function started itself, so a failure means the primitive, not timing.
+ *
+ * Seeing the second message queued is genuinely racy — the first turn ends on its own
+ * schedule — so *not* observing it is reported as inconclusive rather than failed. A doctor
+ * that cries wolf gets ignored, which costs more than the check is worth.
+ */
+async function repairCheck(deps: DoctorDeps): Promise<CheckResult> {
+  const sleep = deps.sleep ?? ((ms: number) => new Promise((resolve) => setTimeout(resolve, ms)));
+  const now = deps.now ?? (() => Date.now());
+  const budget = deps.repairBudgetMs ?? REPAIR_BUDGET_MS;
+  let sessionId: string | null = null;
+
+  try {
+    const created = await deps.client.createSession({
+      workspace: "/tmp",
+      permissionMode: "bypassPermissions",
+      model: deps.sessionModel,
+      effort: deps.sessionEffort,
+      title: "bob-doctor-repair",
+    });
+    sessionId = created.id;
+
+    const first = await deps.client.postMessage(sessionId, REPAIR_PROBE_TASK);
+    if (first.pendingId === null) {
+      return {
+        name: "repair",
+        ok: false,
+        detail: "a native message came back without a pending_id",
+        hint:
+          "A correction can no longer prove a running turn is its own, so it will never " +
+          "interrupt one. Check whether the server still returns pending_id for `message`.",
+      };
+    }
+
+    const second = await deps.client.postMessage(sessionId, "Reply with exactly the word: pong");
+    const queuedSeen = await until(deps, now, sleep, budget, async () =>
+      (await deps.client.sessionState(sessionId!)).pending_inputs.includes(second.pendingId ?? ""),
+    );
+
+    const started = await until(deps, now, sleep, budget, async () => {
+      const status = (await deps.client.sessionState(sessionId!)).status;
+      return status === "running" || status === "waiting";
+    });
+    if (!started) {
+      return {
+        name: "repair",
+        ok: true,
+        detail: "pending_id returned; the session never busied itself, so interrupt was not exercised",
+        hint: "Inconclusive rather than broken — re-run if a correction misbehaves.",
+      };
+    }
+
+    await deps.client.interrupt(sessionId);
+    const stopped = await until(deps, now, sleep, budget, async () =>
+      (await deps.client.sessionState(sessionId!)).status !== "running",
+    );
+    if (!stopped) {
+      return {
+        name: "repair",
+        ok: false,
+        detail: "a running turn kept running after an interrupt",
+        hint: "A correction cannot stop a misrouted message. Check the interrupt event upstream.",
+      };
+    }
+
+    return {
+      name: "repair",
+      ok: true,
+      detail: `pending_id returned, interrupt stopped a running turn${queuedSeen ? ", queued input visible" : ""}`,
+      ...(queuedSeen
+        ? {}
+        : {
+            hint:
+              "the queued message was never observed in pending_inputs — racy, not necessarily " +
+              "broken, but a correction relies on seeing it",
+          }),
+    };
+  } catch (error) {
+    return { name: "repair", ok: false, detail: describe(error) };
+  } finally {
+    if (sessionId !== null) {
+      await deps.client.deleteSession(sessionId).catch(() => {});
+    }
+  }
+}
+
+/** Polls a reading until it holds or the budget runs out. */
+async function until(
+  deps: DoctorDeps,
+  now: () => number,
+  sleep: (ms: number) => Promise<void>,
+  budgetMs: number,
+  holds: () => Promise<boolean>,
+): Promise<boolean> {
+  const deadline = now() + budgetMs;
+  while (now() < deadline) {
+    if (await holds()) return true;
+    await sleep(SMOKE_POLL_MS);
+  }
+  return false;
 }
 
 function portOf(url: string): number {

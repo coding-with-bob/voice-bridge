@@ -13,9 +13,11 @@ function stubClient(overrides: Partial<Record<keyof StubClient, unknown>> = {}):
     listAgents: async () => [{ id: "ag", name: "claude-native-ui", harness: "claude-native" }],
     listSessions: async () => [] as PoolSession[],
     createSession: async () => ({ id: "conv_smoke" }),
-    postMessage: async () => ({ pendingId: null }),
+    postMessage: async () => ({ pendingId: "pending_1" }),
     sessionItems: async () => [{ id: "i", role: "assistant", text: "pong", created_at: 1 }],
     deleteSession: async () => {},
+    interrupt: async () => {},
+    sessionState: async () => ({ status: "idle" as const, pending_inputs: [] }),
   };
   return { ...base, ...overrides } as StubClient;
 }
@@ -32,6 +34,7 @@ const deps = (overrides: Partial<DoctorDeps> = {}): DoctorDeps => ({
   sessionModel: "claude-opus-5",
   sessionEffort: "high",
   sleep: async () => {},
+  repairBudgetMs: 20,
   spawn: true,
   ...overrides,
 });
@@ -52,6 +55,7 @@ describe("runDoctor — a healthy platform", () => {
       "agent",
       "router",
       "spawn",
+      "repair",
     ]);
   });
 
@@ -60,8 +64,10 @@ describe("runDoctor — a healthy platform", () => {
     const report = await runDoctor(
       deps({ client: stubClient({ deleteSession: async (id: string) => void deleted.push(id) }) }),
     );
-    expect(deleted).toEqual(["conv_smoke"]);
+    // Both session-creating checks clean up after themselves.
+    expect(deleted).toEqual(["conv_smoke", "conv_smoke"]);
     expect(check(report, "spawn").ok).toBe(true);
+    expect(check(report, "repair").ok).toBe(true);
   });
 
   test("--quick skips the spawn smoke entirely", async () => {
@@ -102,7 +108,7 @@ describe("runDoctor — every failure explains its fix", () => {
         },
       }),
     );
-    expect(report.checks).toHaveLength(8);
+    expect(report.checks).toHaveLength(9);
     expect(check(report, "bind").ok).toBe(false);
     expect(check(report, "bind").detail).toContain("lsof");
     expect(check(report, "bind").hint).toContain("PATH");
@@ -164,7 +170,75 @@ describe("runDoctor — every failure explains its fix", () => {
     const report = await runDoctor(
       deps({ client: stubClient({ health: async () => ({ ok: false, detail: "down" }) }) }),
     );
-    expect(report.checks).toHaveLength(8);
+    expect(report.checks).toHaveLength(9);
+  });
+});
+
+describe("runDoctor — the repair primitives", () => {
+  /**
+   * The failure with no symptom. Without a pending_id a correction can never prove the
+   * running turn is its own, so it takes the conservative branch every time and silently
+   * stops interrupting anything — nothing else in the system would ever say so.
+   */
+  test("a server that stops returning pending_id fails the check", async () => {
+    const report = await runDoctor(
+      deps({ client: stubClient({ postMessage: async () => ({ pendingId: null }) }) }),
+    );
+    expect(check(report, "repair").ok).toBe(false);
+    expect(check(report, "repair").detail).toContain("pending_id");
+    expect(check(report, "repair").hint).toContain("never interrupt");
+  });
+
+  test("an interrupt that does not stop a running turn fails the check", async () => {
+    const report = await runDoctor(
+      deps({
+        client: stubClient({
+          sessionState: async () => ({ status: "running" as const, pending_inputs: ["pending_1"] }),
+        }),
+      }),
+    );
+    expect(check(report, "repair").ok).toBe(false);
+    expect(check(report, "repair").detail).toContain("after an interrupt");
+  });
+
+  test("a turn that starts and then stops on interrupt passes, and says what it saw", async () => {
+    let interrupted = false;
+    const report = await runDoctor(
+      deps({
+        client: stubClient({
+          interrupt: async () => void (interrupted = true),
+          sessionState: async () => ({
+            status: interrupted ? ("idle" as const) : ("running" as const),
+            pending_inputs: interrupted ? [] : ["pending_1"],
+          }),
+        }),
+      }),
+    );
+    expect(check(report, "repair").ok).toBe(true);
+    expect(check(report, "repair").detail).toContain("interrupt stopped a running turn");
+    expect(check(report, "repair").detail).toContain("queued input visible");
+  });
+
+  /**
+   * The first turn ends on its own schedule, so failing to catch the queued message is a
+   * race, not a defect. A doctor that cries wolf gets ignored, which costs more than the
+   * check is worth — so this reports rather than fails.
+   */
+  test("never catching the queued message is reported, not failed", async () => {
+    let interrupted = false;
+    const report = await runDoctor(
+      deps({
+        client: stubClient({
+          interrupt: async () => void (interrupted = true),
+          sessionState: async () => ({
+            status: interrupted ? ("idle" as const) : ("running" as const),
+            pending_inputs: [],
+          }),
+        }),
+      }),
+    );
+    expect(check(report, "repair").ok).toBe(true);
+    expect(check(report, "repair").hint).toContain("never observed in pending_inputs");
   });
 });
 
