@@ -10,7 +10,7 @@
 import { existsSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, isAbsolute, join, resolve } from "node:path";
-import type { RouterDecision } from "../contracts/decision.ts";
+import { correctionTarget, type RouterDecision } from "../contracts/decision.ts";
 import type { OmnigentClient } from "../omnigent/client.ts";
 import { routedMessage } from "./convention.ts";
 
@@ -42,8 +42,20 @@ export function checkExecutable(
     placement: PlacementBounds;
     /** The closed model vocabulary the prompt offered; membership is checked, never assumed. */
     allowedModels: Set<string>;
+    /** Exchange ids the prompt offered as correctable — the ones that actually dispatched. */
+    correctableIds: Set<string>;
   },
 ): ExecutabilityResult {
+  // A correction names an exchange, and that name is an address like any other: it must be
+  // one the prompt offered. An invented or stale id here would silently undo the wrong thing.
+  const corrects = correctionTarget(decision);
+  if (corrects !== null && !context.correctableIds.has(corrects)) {
+    return {
+      ok: false,
+      reason: `corrected exchange "${corrects}" is not one of the offered exchanges`,
+    };
+  }
+
   switch (decision.action) {
     case "continue":
       return context.candidateIds.has(decision.session_id)
@@ -78,7 +90,7 @@ export function checkExecutable(
       return { ok: true };
     }
     case "clarify":
-    // The repair is fenced by its own invariant; there is no address here to check.
+    // The repair's own address was checked above; the fence does the rest.
     case "undo":
       return { ok: true };
     case "lookup_ledger":

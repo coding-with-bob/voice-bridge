@@ -25,6 +25,8 @@ afterEach(() => {
 const candidateIds = new Set(["s1", "s2"]);
 /** The closed model vocabulary the router is allowed to pick from. */
 const allowedModels = new Set(["claude-opus-5", "claude-fable-5"]);
+/** Exchange ids the prompt offered as correctable. */
+const correctableIds = new Set(["x1", "x2"]);
 /** Wide bounds for the cases that are not about placement. */
 let placement: { projectsRoot: string; homeDir: string };
 beforeEach(() => {
@@ -34,7 +36,7 @@ beforeEach(() => {
 describe("checkExecutable — a valid schema is not a valid address", () => {
   test("continue to a session in the pool passes", () => {
     const decision: RouterDecision = { action: "continue", session_id: "s1", request: "r", ack: "a" };
-    expect(checkExecutable(decision, { candidateIds, placement, allowedModels })).toEqual({ ok: true });
+    expect(checkExecutable(decision, { candidateIds, placement, allowedModels, correctableIds })).toEqual({ ok: true });
   });
 
   test("a hallucinated session id is caught before any side effect", () => {
@@ -44,14 +46,14 @@ describe("checkExecutable — a valid schema is not a valid address", () => {
       request: "r",
       ack: "a",
     };
-    const result = checkExecutable(decision, { candidateIds, placement, allowedModels });
+    const result = checkExecutable(decision, { candidateIds, placement, allowedModels, correctableIds });
     expect(result.ok).toBe(false);
     if (!result.ok) expect(result.reason).toContain("conv_imaginary");
   });
 
   test("new into an existing directory passes", () => {
     const decision: RouterDecision = { action: "new", cwd: dir, request: "r", ack: "a" };
-    expect(checkExecutable(decision, { candidateIds, placement, allowedModels })).toEqual({ ok: true });
+    expect(checkExecutable(decision, { candidateIds, placement, allowedModels, correctableIds })).toEqual({ ok: true });
   });
 
   test("a nonexistent path is caught", () => {
@@ -61,7 +63,7 @@ describe("checkExecutable — a valid schema is not a valid address", () => {
       request: "r",
       ack: "a",
     };
-    const result = checkExecutable(decision, { candidateIds, placement, allowedModels });
+    const result = checkExecutable(decision, { candidateIds, placement, allowedModels, correctableIds });
     expect(result.ok).toBe(false);
     if (!result.ok) expect(result.reason).toContain("not an existing directory");
   });
@@ -69,14 +71,14 @@ describe("checkExecutable — a valid schema is not a valid address", () => {
   test("a file is not a workspace", () => {
     const file = join(dir, "README.md");
     writeFileSync(file, "not a directory");
-    const result = checkExecutable({ action: "new", cwd: file, request: "r", ack: "a" }, { candidateIds, placement, allowedModels });
+    const result = checkExecutable({ action: "new", cwd: file, request: "r", ack: "a" }, { candidateIds, placement, allowedModels, correctableIds });
     expect(result.ok).toBe(false);
   });
 
   test("a relative path is rejected — placement must be unambiguous", () => {
     const result = checkExecutable(
       { action: "new", cwd: "dev/craft", request: "r", ack: "a" },
-      { candidateIds, placement, allowedModels },
+      { candidateIds, placement, allowedModels, correctableIds },
     );
     expect(result.ok).toBe(false);
     if (!result.ok) expect(result.reason).toContain("absolute");
@@ -93,6 +95,7 @@ describe("checkExecutable — a valid schema is not a valid address", () => {
     const bounded = () => ({
       candidateIds,
       allowedModels,
+      correctableIds,
       placement: { projectsRoot: join(dir, "dev"), homeDir: join(dir, "bob") },
     });
     const newIn = (cwd: string): RouterDecision => ({ action: "new", cwd, request: "r", ack: "a" });
@@ -143,7 +146,7 @@ describe("checkExecutable — a valid schema is not a valid address", () => {
       ack: "a",
       model: "claude-fable-5",
     };
-    expect(checkExecutable(decision, { candidateIds, placement, allowedModels })).toEqual({
+    expect(checkExecutable(decision, { candidateIds, placement, allowedModels, correctableIds })).toEqual({
       ok: true,
     });
   });
@@ -156,19 +159,19 @@ describe("checkExecutable — a valid schema is not a valid address", () => {
       ack: "a",
       model: "claude-imaginary-9",
     };
-    const result = checkExecutable(decision, { candidateIds, placement, allowedModels });
+    const result = checkExecutable(decision, { candidateIds, placement, allowedModels, correctableIds });
     expect(result.ok).toBe(false);
     if (!result.ok) expect(result.reason).toContain("claude-imaginary-9");
   });
 
   test("clarify is always executable — it touches nothing", () => {
-    expect(checkExecutable({ action: "clarify", question: "which?" }, { candidateIds, placement, allowedModels })).toEqual({
+    expect(checkExecutable({ action: "clarify", question: "which?" }, { candidateIds, placement, allowedModels, correctableIds })).toEqual({
       ok: true,
     });
   });
 
   test("a ledger lookup is rejected until the mechanism exists", () => {
-    const result = checkExecutable({ action: "lookup_ledger", query: "subtitle" }, { candidateIds, placement, allowedModels });
+    const result = checkExecutable({ action: "lookup_ledger", query: "subtitle" }, { candidateIds, placement, allowedModels, correctableIds });
     expect(result.ok).toBe(false);
   });
 });

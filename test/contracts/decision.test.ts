@@ -61,6 +61,27 @@ describe("C5 router decision — discriminated union", () => {
     expect(result.ok).toBe(false);
   });
 
+  /**
+   * Identification is semantic: the correction names the exchange it undoes, and even an
+   * undo — nowhere to re-route to — must say which one. An unidentifiable correction is a
+   * clarify at the prompt level, and a schema failure here.
+   */
+  test("a correction names the exchange it corrects", () => {
+    const parsed = RouterDecisionSchema.parse({
+      action: "continue",
+      session_id: "sess-invoices",
+      request: "did the export include November?",
+      ack: "Beküldve az invoice sessionnek.",
+      corrects: "x2",
+    });
+    if (parsed.action === "continue") expect(parsed.corrects).toBe("x2");
+  });
+
+  test("an undo without a named exchange is not a decision", () => {
+    expect(parseRouterDecision({ action: "undo", ack: "ok" }).ok).toBe(false);
+    expect(parseRouterDecision({ action: "undo", corrects: "x1", ack: "ok" }).ok).toBe(true);
+  });
+
   test("accepts clarify and lookup_ledger", () => {
     expect(
       RouterDecisionSchema.parse({ action: "clarify", question: "Which project?" }).action,

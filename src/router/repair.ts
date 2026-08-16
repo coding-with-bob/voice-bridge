@@ -30,6 +30,8 @@ export interface RepairResult {
   outcome: RepairOutcome;
   /** The session the repair acted on, or null when there was nothing to act on. */
   sessionId: string | null;
+  /** The decision-log ts of the corrected dispatch, when one was identified. */
+  ofTs?: string;
 }
 
 /**
@@ -37,9 +39,19 @@ export interface RepairResult {
  * to an agent, not something the person hears (R-11), and blunt because it has to survive
  * being read in the middle of a turn.
  */
-export const DISREGARD_TEXT =
-  "The previous message was delivered here by mistake and is not your task. " +
-  "Disregard it, undo nothing you have not already done for it, and continue what you were doing.";
+/**
+ * "The previous message" would be ambiguous whenever a legitimate dispatch arrived after
+ * the mistake — the session would disregard the wrong one. So the note identifies the
+ * message the same way the correction identified the exchange: by content.
+ */
+export function disregardTextFor(request: string): string {
+  const quoted = request.replace(/\s+/g, " ").trim().slice(0, 120);
+  return (
+    `A message delivered to you earlier was misrouted and is not your task — the one asking: ` +
+    `"${quoted}". Disregard that message specifically, undo nothing you have not already done ` +
+    `for it, and continue what you were doing.`
+  );
+}
 
 /** Outcomes the person is told about, because the mistake is still standing in some form. */
 export const UNWITHDRAWN: readonly RepairOutcome[] = [
@@ -57,8 +69,8 @@ export interface RepairDeps {
   /** How recent the mistake must be for its session to be deletable. */
   windowMs: number;
   now: () => Date;
-  /** Sent to a session that received a misrouted message it may already be acting on. */
-  disregardText: string;
+  /** Builds the note for the misrouted request — identified by content, never by position. */
+  disregardText: (request: string) => string;
 }
 
 /**
@@ -102,13 +114,20 @@ export async function repairPrevious(
     return { outcome: "nothing-to-undo", sessionId: null };
   }
   const sessionId = previous.target_session_id;
+  const ofTs = previous.ts;
+  const decision = previous.decision;
+  const request =
+    decision !== null && (decision.action === "continue" || decision.action === "new")
+      ? decision.request
+      : previous.utterance;
+  const note = deps.disregardText(request);
 
   // A session that exists only because of the mistake holds nothing worth keeping, and
   // leaving it would put a junk candidate in front of every future routing decision.
   if (isDeletableMistake(previous, history, deps.now(), deps.windowMs)) {
     await deps.client.interrupt(sessionId);
     await deps.client.deleteSession(sessionId);
-    return { outcome: "deleted", sessionId };
+    return { outcome: "deleted", sessionId, ofTs };
   }
 
   const state = await deps.client.sessionState(sessionId);
@@ -119,8 +138,8 @@ export async function repairPrevious(
     // Interrupting here would cancel a turn that has nothing to do with the mistake. The
     // note still reaches the session before it starts on ours, which is the whole of what
     // is available.
-    await deps.client.postMessage(sessionId, deps.disregardText);
-    return { outcome: "queued-not-withdrawable", sessionId };
+    await deps.client.postMessage(sessionId, note);
+    return { outcome: "queued-not-withdrawable", sessionId, ofTs };
   }
 
   /**
@@ -131,18 +150,18 @@ export async function repairPrevious(
    * server's memory, so a restart empties it and makes "absent" mean nothing at all.
    */
   if (pendingId === null && busy) {
-    await deps.client.postMessage(sessionId, deps.disregardText);
-    return { outcome: "cannot-verify", sessionId };
+    await deps.client.postMessage(sessionId, note);
+    return { outcome: "cannot-verify", sessionId, ofTs };
   }
 
   if (busy) {
     await deps.client.interrupt(sessionId);
-    await deps.client.postMessage(sessionId, deps.disregardText);
-    return { outcome: "interrupted", sessionId };
+    await deps.client.postMessage(sessionId, note);
+    return { outcome: "interrupted", sessionId, ofTs };
   }
 
   // Idle: whatever the message caused has already happened. Interrupting would cut into
   // nothing, or into something the person asked for afterwards.
-  await deps.client.postMessage(sessionId, deps.disregardText);
-  return { outcome: "already-finished", sessionId };
+  await deps.client.postMessage(sessionId, note);
+  return { outcome: "already-finished", sessionId, ofTs };
 }

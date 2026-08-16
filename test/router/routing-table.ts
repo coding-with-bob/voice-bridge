@@ -40,8 +40,8 @@ export interface RoutingExpectation {
   model?: string;
   /** Words the request must not still carry: naming a model is not part of the work. */
   requestExcludes?: string[];
-  /** The decision undoes the previous dispatch before doing anything of its own. */
-  corrects?: boolean;
+  /** The decision-log ts of the dispatch the correction must resolve to. */
+  corrects?: string;
 }
 
 export interface RoutingCase {
@@ -227,11 +227,119 @@ export const ROUTING_TABLE: RoutingCase[] = [
         action: "continue",
         session_id: "sess-invoices",
         request: "did the invoice export include the November numbers?",
-        ack: "Visszavonva, beküldve az invoice export sessionnek.",
-        corrects_previous: true,
+        ack: "Beküldve az invoice export sessionnek.",
+        corrects: "x1",
       },
     ],
-    expect: { action: "continue", session_id: "sess-invoices", corrects: true },
+    // The assertion is on the durable identity — the ts of the seeded mistake — not on
+    // whatever per-invocation id the model used to name it.
+    expect: {
+      action: "continue",
+      session_id: "sess-invoices",
+      corrects: new Date(minutesAgo(2) * 1000).toISOString(),
+    },
+  },
+  {
+    // The case the semantic identification exists for: a good request arrived BETWEEN the
+    // mistake and the correction. Positional "last dispatch" would undo the good one; the
+    // correction names the older exchange instead, and the newer dispatch is untouched.
+    name: "a correction reaches past a newer good dispatch to the exchange it names",
+    sessions: [subtitleSession, invoiceSession],
+    spoken: [spoke("sess-subtitles", "The subtitle timing is fixed.", minutesAgo(6))],
+    decisions: [
+      {
+        ts: new Date(minutesAgo(5) * 1000).toISOString(),
+        utterance: "did the invoice export include the November numbers?",
+        context_digest: "2 candidates",
+        decision: {
+          action: "continue",
+          session_id: "sess-subtitles",
+          request: "did the invoice export include the November numbers?",
+          ack: "Beküldve a subtitle sessionnek.",
+        },
+        latency_ms: 1200,
+        model: "claude-opus-5",
+        target_session_id: "sess-subtitles",
+        executed: true,
+        pending_id: "pending_mistake",
+        reachback: false,
+        peeked: false,
+        fallback: false,
+      },
+      {
+        ts: new Date(minutesAgo(2) * 1000).toISOString(),
+        utterance: "shift the subtitles by two seconds",
+        context_digest: "2 candidates",
+        decision: {
+          action: "continue",
+          session_id: "sess-subtitles",
+          request: "shift the subtitles by two seconds",
+          ack: "Beküldve a subtitle sessionnek.",
+        },
+        latency_ms: 1100,
+        model: "claude-opus-5",
+        target_session_id: "sess-subtitles",
+        executed: true,
+        pending_id: "pending_good",
+        reachback: false,
+        peeked: false,
+        fallback: false,
+      },
+    ],
+    utterance:
+      "nem, az invoice exportos kérdést rossz helyre küldted, az az invoice export sessionbe tartozott",
+    scripted: [
+      {
+        action: "continue",
+        session_id: "sess-invoices",
+        request: "did the invoice export include the November numbers?",
+        ack: "Beküldve az invoice export sessionnek.",
+        corrects: "x1",
+      },
+    ],
+    expect: {
+      action: "continue",
+      session_id: "sess-invoices",
+      corrects: new Date(minutesAgo(5) * 1000).toISOString(),
+    },
+  },
+  {
+    // The same guard every other address gets: an exchange id nobody offered never reaches
+    // the repair. mockOnly — a real model cannot be asked to hallucinate on demand.
+    name: "a correction naming an exchange nobody offered becomes a spoken question",
+    sessions: [subtitleSession],
+    spoken: [spoke("sess-subtitles", "The subtitle timing is fixed.", minutesAgo(3))],
+    decisions: [
+      {
+        ts: new Date(minutesAgo(2) * 1000).toISOString(),
+        utterance: "fix the timing",
+        context_digest: "1 candidate",
+        decision: {
+          action: "continue",
+          session_id: "sess-subtitles",
+          request: "fix the timing",
+          ack: "ok",
+        },
+        latency_ms: 1000,
+        model: "claude-opus-5",
+        target_session_id: "sess-subtitles",
+        executed: true,
+        reachback: false,
+        peeked: false,
+        fallback: false,
+      },
+    ],
+    utterance: "nem, ez rossz volt",
+    scripted: [
+      {
+        action: "undo",
+        corrects: "x9",
+        ack: "Visszavonom.",
+      },
+    ],
+    expect: { action: "clarify" },
+    mockExpect: { fallback: true },
+    mockOnly: true,
   },
   {
     name: "a request belonging to no project is born at home",

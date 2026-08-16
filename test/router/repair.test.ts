@@ -1,10 +1,15 @@
 import { describe, expect, test } from "bun:test";
-import { isDeletableMistake, repairPrevious, type RepairDeps } from "../../src/router/repair.ts";
+import {
+  disregardTextFor,
+  isDeletableMistake,
+  repairPrevious,
+  type RepairDeps,
+} from "../../src/router/repair.ts";
 import type { DecisionLogEntry } from "../../src/contracts/decision.ts";
 import type { SessionState } from "../../src/omnigent/parse.ts";
 
 const NOW = new Date("2026-08-16T12:00:00.000Z");
-const DISREGARD = "the previous message was misrouted — disregard it";
+const DISREGARD_MARK = "misrouted and is not your task";
 
 function entry(overrides: Partial<DecisionLogEntry> = {}): DecisionLogEntry {
   return {
@@ -29,7 +34,7 @@ function stub(state: SessionState) {
     interrupt: async (id: string) => void calls.push(`interrupt:${id}`),
     deleteSession: async (id: string) => void calls.push(`delete:${id}`),
     postMessage: async (id: string, text: string) => {
-      calls.push(`message:${id}:${text === DISREGARD ? "disregard" : text}`);
+      calls.push(`message:${id}:${text.includes(DISREGARD_MARK) ? "disregard" : text}`);
       return { pendingId: null };
     },
     sessionState: async (id: string) => {
@@ -41,7 +46,7 @@ function stub(state: SessionState) {
     client,
     windowMs: 10 * 60_000,
     now: () => NOW,
-    disregardText: DISREGARD,
+    disregardText: disregardTextFor,
   };
   return { calls, deps };
 }
@@ -93,7 +98,7 @@ describe("repairPrevious", () => {
     const { calls, deps } = stub(idle);
     const previous = entry();
     const result = await repairPrevious(previous, [previous], deps);
-    expect(result).toEqual({ outcome: "deleted", sessionId: "sess-mistake" });
+    expect(result).toEqual({ outcome: "deleted", sessionId: "sess-mistake", ofTs: NOW.toISOString() });
     expect(calls).toEqual(["interrupt:sess-mistake", "delete:sess-mistake"]);
   });
 
@@ -143,6 +148,17 @@ describe("repairPrevious", () => {
     expect(result.outcome).toBe("cannot-verify");
     expect(calls).not.toContain("interrupt:sess-busy");
     expect(calls).toContain("message:sess-busy:disregard");
+  });
+
+  /**
+   * "The previous message" is ambiguous exactly in the case the semantic correction exists
+   * for: a good dispatch arrived after the mistake, so "previous" points at the wrong one.
+   * The note names the misrouted request by content instead.
+   */
+  test("the disregard note quotes the misrouted request, not its position", () => {
+    const note = disregardTextFor("did the invoice export include the November numbers?");
+    expect(note).toContain('"did the invoice export include the November numbers?"');
+    expect(note).not.toContain("previous message");
   });
 
   test("an idle session has already done it — the note is all that is left", async () => {

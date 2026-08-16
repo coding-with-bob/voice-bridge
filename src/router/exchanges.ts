@@ -12,6 +12,14 @@ import type { DecisionLogEntry } from "../contracts/decision.ts";
 import type { SpokenLogEntry } from "../contracts/spoken-log.ts";
 
 export interface Exchange {
+  /**
+   * Stable within one invocation ("x1" oldest … "xN" newest), rendered next to each
+   * exchange so a correction can name the one it means. The durable identity behind it is
+   * `ts` — ids are re-derived fresh every invocation, exactly like the exchanges themselves.
+   */
+  id: string;
+  /** The decision-log timestamp of the dispatch — what the id resolves back to. */
+  ts: string;
   minutes_ago: number;
   utterance: string;
   action: "continue" | "new" | "clarify" | "lookup_ledger" | "undo";
@@ -35,7 +43,7 @@ export function buildExchanges(input: {
   return input.decisions
     .filter((entry) => entry.decision !== null)
     .slice(-limit)
-    .map((entry) => {
+    .map((entry, index) => {
       const decision = entry.decision!;
       const dispatchedAt = Date.parse(entry.ts);
 
@@ -51,6 +59,8 @@ export function buildExchanges(input: {
               )?.text ?? null);
 
       return {
+        id: `x${index + 1}`,
+        ts: entry.ts,
         minutes_ago: Math.max(0, Math.floor((input.now.getTime() - dispatchedAt) / 60_000)),
         utterance: truncate(entry.utterance),
         action: decision.action,

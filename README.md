@@ -67,7 +67,10 @@ you last picked for your own terminal silently becomes the model the voice bridg
 
 **Correcting a misroute.** If the ack names the wrong place, say so — *"nem, ez rossz volt, az
 invoice exportos sessionbe"*. The router treats that as a correction rather than a follow-up,
-undoes what it can, and re-routes. What "undo" means depends on what the mistake was: a session
+identifies **which** request you mean against the recent exchanges — by content, or by position
+when you count ("az előző", "a kettővel ezelőtti") — undoes what it can, and re-routes. A good
+request that arrived between the mistake and the correction is untouched, and a correction the
+router cannot pin to a specific exchange becomes a question, never a guess. What "undo" means depends on what the mistake was: a session
 that exists only because of it is interrupted and deleted; a message that has started running is
 interrupted; a message still queued behind unrelated work is **not** interrupted, because that
 would cancel someone else's turn and let the mistake start next anyway. In that last case the

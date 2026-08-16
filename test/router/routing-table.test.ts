@@ -34,7 +34,7 @@ function assertRow(testCase: RoutingCase, outcome: RunOutcome, live: boolean): v
 
   if (testCase.expect.session_id !== undefined) {
     expect(result.target_session_id).toBe(testCase.expect.session_id);
-    if (testCase.expect.corrects === true) {
+    if (testCase.expect.corrects !== undefined) {
       // A correction also messages the session that received the mistake, telling it to
       // disregard — so the request is the last message rather than the only one.
       expect(outcome.messages.at(-1)?.id).toBe(testCase.expect.session_id);
@@ -58,12 +58,9 @@ function assertRow(testCase: RoutingCase, outcome: RunOutcome, live: boolean): v
   }
 
   if (testCase.expect.corrects !== undefined) {
-    const decision = result.decision;
-    const corrects =
-      decision.action === "undo" ||
-      ((decision.action === "continue" || decision.action === "new") &&
-        decision.corrects_previous === true);
-    expect(corrects).toBe(testCase.expect.corrects);
+    // What matters is the durable identity: the correction resolved to the right dispatch,
+    // whatever per-invocation id the model used to name it.
+    expect(result.correction?.of_ts ?? null).toBe(testCase.expect.corrects);
   }
 
   if (testCase.expect.reachback !== undefined) {

@@ -14,7 +14,7 @@ import { join } from "node:path";
 import type { BobPaths } from "../config/load.ts";
 import type { BobConfig } from "../contracts/config.ts";
 import type { RouterDecision, DecisionLogEntry } from "../contracts/decision.ts";
-import { candidatesOf, isCorrection, parseRouterDecision } from "../contracts/decision.ts";
+import { candidatesOf, correctionTarget, parseRouterDecision } from "../contracts/decision.ts";
 import type { OmnigentClient } from "../omnigent/client.ts";
 import type { PoolSession } from "../omnigent/parse.ts";
 import { acquireLock, type LockOptions } from "../say/lock.ts";
@@ -29,10 +29,11 @@ import { checkExecutable, executeDecision, normalizeDecision } from "./execute.t
 import { grepSpokenLedger, readSpokenEntries } from "./ledger.ts";
 import { fetchPeekExtracts, PEEK_CANDIDATE_LIMIT } from "./peek.ts";
 import {
-  DISREGARD_TEXT,
+  disregardTextFor,
   repairPrevious,
   UNWITHDRAWN,
   WITHDRAWN,
+  type RepairOutcome,
   type RepairResult,
 } from "./repair.ts";
 import { extractJson, type ModelCall } from "./model.ts";
@@ -89,6 +90,8 @@ export interface RouteResult {
   peeked: boolean;
   /** What was said out loud (or would have been, on a dry run). */
   spoken: string;
+  /** Present when this decision undid an earlier dispatch; mirrors the log entry. */
+  correction?: { of_session_id: string | null; of_ts?: string; outcome: RepairOutcome };
   latency_ms: number;
   context_digest: string;
 }
@@ -125,13 +128,16 @@ async function routeUnderLock(
   if (!fallback && deps.dryRun !== true) {
     try {
       // The repair runs first and on its own: undoing the mistake must not depend on the
-      // re-route succeeding, and the person asked for the undo either way.
-      if (isCorrection(decision)) {
-        repair = await repairPrevious(lastDispatch(decisions), decisions, {
+      // re-route succeeding, and the person asked for the undo either way. Which dispatch
+      // is undone is the decision's to say — the exchange id resolves to a log entry, and
+      // an id that resolves to nothing was already rejected by the executability check.
+      const corrects = correctionTarget(decision);
+      if (corrects !== null) {
+        repair = await repairPrevious(resolveExchange(context, decisions, corrects), decisions, {
           client: deps.client,
           windowMs: deps.config.correction_window_min * 60_000,
           now,
-          disregardText: DISREGARD_TEXT,
+          disregardText: disregardTextFor,
         });
       }
       const outcome = await executeDecision(decision, {
@@ -167,7 +173,13 @@ async function routeUnderLock(
     pending_id: pendingId,
     ...(repair === null
       ? {}
-      : { correction: { of_session_id: repair.sessionId, outcome: repair.outcome } }),
+      : {
+          correction: {
+            of_session_id: repair.sessionId,
+            ...(repair.ofTs === undefined ? {} : { of_ts: repair.ofTs }),
+            outcome: repair.outcome,
+          },
+        }),
     reachback: reach.reachback,
     ...(reach.reason === undefined ? {} : { reachback_reason: reach.reason }),
     peeked: attempt.peeked,
@@ -197,6 +209,15 @@ async function routeUnderLock(
     ...(reach.reason === undefined ? {} : { reachback_reason: reach.reason }),
     peeked: attempt.peeked,
     spoken,
+    ...(repair === null
+      ? {}
+      : {
+          correction: {
+            of_session_id: repair.sessionId,
+            ...(repair.ofTs === undefined ? {} : { of_ts: repair.ofTs }),
+            outcome: repair.outcome,
+          },
+        }),
     latency_ms: attempt.latencyMs,
     context_digest: context.digest,
   };
@@ -330,6 +351,7 @@ async function decide(
       candidateIds: addressableIds(context),
       placement: { projectsRoot: deps.projectsRoot, homeDir: deps.config.home_dir },
       allowedModels: new Set(deps.config.session_models),
+      correctableIds: correctableExchangeIds(context),
     });
     if (!executable.ok) return fallbackWith(`decision is not executable: ${executable.reason}`);
 
@@ -396,13 +418,27 @@ function fallbackDecision(config: BobConfig): RouterDecision {
   return { action: "clarify", question: config.clarify_fallback_text };
 }
 
-/** The most recent dispatch that actually reached a session — the only thing a correction undoes. */
-function lastDispatch(decisions: DecisionLogEntry[]): DecisionLogEntry | null {
-  for (let index = decisions.length - 1; index >= 0; index -= 1) {
-    const entry = decisions[index]!;
-    if (entry.executed && entry.target_session_id !== null) return entry;
-  }
-  return null;
+/** The exchanges a correction may name: the ones that actually dispatched somewhere. */
+function correctableExchangeIds(context: RoutingContext): Set<string> {
+  return new Set(
+    context.recent_exchanges
+      .filter((exchange) => exchange.target_session_id !== null)
+      .map((exchange) => exchange.id),
+  );
+}
+
+/**
+ * An exchange id back to the decision-log entry it stands for. The id is per-invocation;
+ * the ts underneath it is the durable identity, so the lookup goes id → ts → entry.
+ */
+function resolveExchange(
+  context: RoutingContext,
+  decisions: DecisionLogEntry[],
+  exchangeId: string,
+): DecisionLogEntry | null {
+  const exchange = context.recent_exchanges.find((candidate) => candidate.id === exchangeId);
+  if (exchange === undefined) return null;
+  return decisions.find((entry) => entry.ts === exchange.ts) ?? null;
 }
 
 /**

@@ -23,12 +23,14 @@ export type Candidate = z.infer<typeof CandidateSchema>;
 const candidates = z.array(CandidateSchema).optional();
 
 /**
- * Set when this decision supersedes the previous dispatch because the person said it went
- * to the wrong place. A correction has the *form* of a follow-up and the opposite meaning,
- * so it is marked rather than inferred: the repair runs before the re-route, and only ever
- * against the immediately preceding dispatch.
+ * The exchange id of the dispatch this decision supersedes, when the person said it went to
+ * the wrong place. Identification is semantic, not positional: the router is shown the
+ * recent exchanges with their ids and names the one the utterance means — "az előző" is the
+ * latest listed, "the invoice request" is matched by content. A correction that cannot say
+ * *which* exchange it corrects is a clarify, never a guess; the id offered must exist, which
+ * the executability check enforces like every other address.
  */
-const correctsPrevious = z.boolean().optional();
+const corrects = z.string().min(1).optional();
 
 export const ContinueDecisionSchema = z.object({
   action: z.literal("continue"),
@@ -37,7 +39,7 @@ export const ContinueDecisionSchema = z.object({
   request: z.string().min(1),
   /** One short sentence spoken back immediately, before the work starts. */
   ack: z.string().min(1),
-  corrects_previous: correctsPrevious,
+  corrects,
   candidates,
 });
 
@@ -63,16 +65,18 @@ export const NewDecisionSchema = z.object({
    */
   model: z.string().min(1).optional(),
   effort: EffortSchema.optional(),
-  corrects_previous: correctsPrevious,
+  corrects,
   candidates,
 });
 
 /**
  * "No, that was wrong" with nowhere named to put it instead. The repair runs and nothing is
  * dispatched — distinct from `clarify`, which asks a question and leaves the mistake standing.
+ * Even an undo has to say which exchange it undoes; an unidentifiable one is a clarify.
  */
 export const UndoDecisionSchema = z.object({
   action: z.literal("undo"),
+  corrects: z.string().min(1),
   ack: z.string().min(1),
 });
 
@@ -116,13 +120,13 @@ export function candidatesOf(decision: RouterDecision): Candidate[] {
   return "candidates" in decision ? (decision.candidates ?? []) : [];
 }
 
-/** Does this decision undo the previous dispatch before doing anything of its own? */
-export function isCorrection(decision: RouterDecision): boolean {
-  if (decision.action === "undo") return true;
-  return (
-    (decision.action === "continue" || decision.action === "new") &&
-    decision.corrects_previous === true
-  );
+/** The exchange id this decision undoes before doing anything of its own, if any. */
+export function correctionTarget(decision: RouterDecision): string | null {
+  if (decision.action === "undo") return decision.corrects;
+  if (decision.action === "continue" || decision.action === "new") {
+    return decision.corrects ?? null;
+  }
+  return null;
 }
 
 export type DecisionParseResult =
@@ -173,6 +177,8 @@ export const DecisionLogEntrySchema = z.object({
     .object({
       /** The dispatch that was undone. */
       of_session_id: z.string().nullable(),
+      /** Its decision-log timestamp — the durable identity behind the per-invocation exchange id. */
+      of_ts: z.string().optional(),
       /** What the repair could actually do — the C5 record of a misroute. */
       outcome: z.enum([
         "deleted",

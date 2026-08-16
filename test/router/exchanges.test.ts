@@ -42,6 +42,8 @@ describe("buildExchanges — the dialogue, reassembled at read time", () => {
 
     expect(exchanges).toEqual([
       {
+        id: "x1",
+        ts: minutesAgo(10),
         minutes_ago: 10,
         utterance: "mi volt a legutolsó sorozat?",
         action: "continue",

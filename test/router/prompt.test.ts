@@ -113,8 +113,10 @@ describe("SYSTEM_PROMPT — the discipline is stated, not implied", () => {
   test("a correction is considered before anything can swallow it as a follow-up", () => {
     expect(SYSTEM_PROMPT.indexOf("CORRECTION")).toBeLessThan(SYSTEM_PROMPT.indexOf("FOLLOW-UP"));
     expect(SYSTEM_PROMPT).toContain("A correction is never a follow-up");
-    expect(SYSTEM_PROMPT).toContain('"corrects_previous":true');
-    expect(SYSTEM_PROMPT).toContain('{"action":"undo"}');
+    // Identification is semantic, and refusal to guess is stated, not implied.
+    expect(SYSTEM_PROMPT).toContain("identify WHICH exchange");
+    expect(SYSTEM_PROMPT).toContain("never guess at what to undo");
+    expect(SYSTEM_PROMPT).toContain('"corrects"');
   });
 
   /**
@@ -183,6 +185,8 @@ describe("buildUserPrompt", () => {
       context({
         recent_exchanges: [
           {
+            id: "x1",
+            ts: "2026-08-15T11:00:00.000Z",
             minutes_ago: 23,
             utterance: "mi volt a legutolsó sorozat?",
             action: "continue",
@@ -190,6 +194,8 @@ describe("buildUserPrompt", () => {
             reply: "A Star Trek S04E04 letöltése kész.",
           },
           {
+            id: "x2",
+            ts: "2026-08-15T11:58:00.000Z",
             minutes_ago: 2,
             utterance: "Hiabob köszönj, Marcinak!",
             action: "clarify",
@@ -202,7 +208,10 @@ describe("buildUserPrompt", () => {
       NOW,
     );
     expect(prompt).toContain("RECENT EXCHANGES");
-    expect(prompt).toContain('"mi volt a legutolsó sorozat?" → continue sess-tv → "A Star Trek S04E04');
+    // The ids are the correction vocabulary — rendered on every line, explained in the header.
+    expect(prompt).toContain('the [xN] ids are what "corrects" refers to');
+    expect(prompt).toContain('[x1] 23m ago: "mi volt a legutolsó sorozat?" → continue sess-tv → "A Star Trek S04E04');
+    expect(prompt).toContain("[x2] 2m ago:");
     expect(prompt).toContain('→ clarify → "Melyikre gondolsz?"');
     expect(prompt.indexOf("legutolsó sorozat")).toBeLessThan(prompt.indexOf("Hiabob"));
   });
@@ -215,7 +224,7 @@ describe("buildUserPrompt", () => {
     const prompt = buildUserPrompt(
       context({
         recent_exchanges: [
-          { minutes_ago: 1, utterance: "u", action: "new", target_session_id: "sess-x", reply: null },
+          { id: "x1", ts: "2026-08-15T11:59:00.000Z", minutes_ago: 1, utterance: "u", action: "new", target_session_id: "sess-x", reply: null },
         ],
       }),
       "x",
