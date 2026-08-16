@@ -51,6 +51,16 @@ cost nothing — recording follows the chord, not the sound.
   never outlive its stop by more than the grace period.
 - The last recording is kept at `~/bob/state/ptt-last.wav` until the next press — it is the
   debug artifact when a transcription looks wrong (`bob dictate --stt-only` replays it).
+- **A capture that produces no bytes for 2.5 s is declared dead on the spot** — alert,
+  Basso, take cancelled — instead of letting the speaker finish a question into a dead
+  microphone. ffmpeg writes with `-flush_packets 1`, so a live mic shows data on disk well
+  inside a second (measured ~16 KiB at 0.5 s); an empty file at 2.5 s means no frames are
+  coming. Observed 2026-08-16: AVCaptureSession running, CoreAudio IO started, and still
+  zero frames reached ffmpeg — a one-off that 22 scripted repro takes could not reproduce.
+- **Every take is logged** to `~/bob/logs/ptt.jsonl`: outcome (`dispatched` / `empty` /
+  `dead-air` / `cancelled` / `too-short`), hold duration, wav size, ffmpeg exit code, and —
+  for failures — the tail of ffmpeg's stderr. The log exists because the 2026-08-16 empty
+  take left no evidence at all; the next one will name its cause.
 
 ## Configuration
 
