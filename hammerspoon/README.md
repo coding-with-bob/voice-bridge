@@ -1,8 +1,10 @@
 # Entry: Hammerspoon push-to-talk (PTT v2)
 
-The one-gesture voice entry: **hold F13, speak, release.** Hammerspoon records while the key
-is down and hands the finished wav to `bob dictate`, which transcribes it with ElevenLabs
-Scribe and runs the same route pipeline the Raycast entry uses. Esc while holding cancels.
+The one-gesture voice entry: **hold Globe+Ctrl+Alt, speak, release.** Hammerspoon records
+while the chord is held and hands the finished wav to `bob dictate`, which transcribes it with
+ElevenLabs Scribe and runs the same route pipeline the Raycast entry uses. Esc while holding
+cancels. A modifier chord on purpose: modifiers type nothing on their own, so the gesture can
+never collide with an app shortcut, and releasing *any* one of the three keys ends the take.
 
 This exists because the Raycast+Monologue entry is a four-step gesture, and because the two
 alternatives fail for a specific reason: a Raycast extension cannot see a key release at all,
@@ -33,7 +35,7 @@ key, pauses are free. (The full research is in bob-jarvis:
 **Hold → speak → release.** Nothing opens and nothing needs closing: a small on-screen alert
 shows while the microphone is live, the router speaks its acknowledgement a few seconds after
 release, and the session speaks its answer when the work is done. Thinking pauses mid-utterance
-cost nothing — recording follows the key, not the sound.
+cost nothing — recording follows the chord, not the sound.
 
 - **Esc while holding** cancels the recording; nothing is dispatched.
 - **Releases under 0.25 s** are dropped as fat-fingers.
@@ -44,10 +46,14 @@ cost nothing — recording follows the key, not the sound.
 
 ## Configuration
 
-Top of `heybob-ptt.lua`: `PTT_KEY` (any `hs.keycodes.map` name — pick a key the frontmost app
-never needs; the tap swallows it), `MAX_SECONDS`, `MIN_SECONDS`. The recording device is the
-system default input (`:default`), so switching microphones needs no config here. After any
-edit: Hammerspoon menu → *Reload Config*.
+Top of `heybob-ptt.lua`: `PTT_CHORD` (which modifiers make the gesture — valid names are
+`fn` for the Globe key, `ctrl`, `alt`, `cmd`, `shift`), `MAX_SECONDS`, `MIN_SECONDS`. The
+recording device is the system default input (`:default`), so switching microphones needs no
+config here. After any edit: Hammerspoon menu → *Reload Config*.
+
+One system-side note: the Globe key's *solo* action (emoji picker / input-source switch) is
+untouched by the chord, but if a slow chord press ever triggers it, set the key to
+*Do Nothing* under System Settings → Keyboard → "Press 🌐 key to".
 
 ## When it goes wrong
 

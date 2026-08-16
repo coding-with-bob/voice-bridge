@@ -1,16 +1,21 @@
 -- Hey Bob — push-to-talk entry (PTT v2).
 --
--- Hold PTT_KEY: recording starts. Release it: recording stops and the utterance is
--- dispatched through `bob dictate` (Scribe STT → router → spoken acknowledgement).
--- Esc while holding cancels. Pauses cost nothing — the recording runs as long as the
--- key is held, which is the whole reason this exists instead of silence detection.
+-- Hold the PTT_CHORD modifiers together: recording starts. Release any of them:
+-- recording stops and the utterance is dispatched through `bob dictate` (Scribe STT
+-- → router → spoken acknowledgement). Esc while holding cancels. Pauses cost
+-- nothing — the recording runs as long as the chord is held, which is the whole
+-- reason this exists instead of silence detection.
 --
 -- This module is only the ear and the finger; everything downstream is the hey-bob
 -- chain. The launcher owns the environment (the M5 lesson), so every path here is
 -- absolute and the dispatch script exports its own PATH exactly like the Raycast entry.
 
-local PTT_KEY = "f13" -- any hs.keycodes.map name; pick a key the frontmost app never needs
-local MAX_SECONDS = 120 -- runaway protection: a held key is not a stuck key
+-- The PTT gesture is a modifier chord: hold all of these together to record, release
+-- any one of them to dispatch. Modifiers type nothing on their own, so the chord can
+-- never collide with an app shortcut the way a regular key could. Valid names are the
+-- ones hs.eventtap.event:getFlags() reports: fn (the Globe key), ctrl, alt, cmd, shift.
+local PTT_CHORD = { fn = true, ctrl = true, alt = true }
+local MAX_SECONDS = 120 -- runaway protection: a held chord is not a stuck one
 local MIN_SECONDS = 0.25 -- below this it was a fat-finger, not an utterance
 
 local HOME = os.getenv("HOME")
@@ -92,30 +97,34 @@ local function stopRecording(cancel)
   recorder:interrupt() -- SIGINT: ffmpeg finalises the wav header, then onRecorderExit fires
 end
 
-local keyCode = hs.keycodes.map[PTT_KEY]
 local escCode = hs.keycodes.map.escape
 
--- Global on purpose: an eventtap held only by a local is garbage-collected and
--- silently stops firing — the classic Hammerspoon trap.
-heybobPttTap = hs.eventtap.new(
-  { hs.eventtap.event.types.keyDown, hs.eventtap.event.types.keyUp },
-  function(ev)
-    local code = ev:getKeyCode()
-    local isDown = ev:getType() == hs.eventtap.event.types.keyDown
-
-    if code == keyCode then
-      local isRepeat = ev:getProperty(hs.eventtap.event.properties.keyboardEventAutorepeat) ~= 0
-      if isDown and not isRepeat and recorder == nil then startRecording() end
-      if not isDown then stopRecording(false) end
-      return true -- the PTT key never reaches the frontmost app
-    end
-
-    if code == escCode and isDown and recorder ~= nil then
-      stopRecording(true)
-      return true
-    end
-
-    return false
+local function chordHeld(flags)
+  for name in pairs(PTT_CHORD) do
+    if flags[name] ~= true then return false end
   end
-)
-heybobPttTap:start()
+  return true
+end
+
+-- Globals on purpose: an eventtap held only by a local is garbage-collected and
+-- silently stops firing — the classic Hammerspoon trap.
+--
+-- Modifier state arrives as flagsChanged, one event per press or release; the
+-- events are never swallowed, because blocking modifier updates would corrupt
+-- every other shortcut on the machine.
+heybobPttChordTap = hs.eventtap.new({ hs.eventtap.event.types.flagsChanged }, function(ev)
+  local held = chordHeld(ev:getFlags())
+  if held and recorder == nil then startRecording() end
+  if not held and recorder ~= nil then stopRecording(false) end
+  return false
+end)
+heybobPttChordTap:start()
+
+heybobPttEscTap = hs.eventtap.new({ hs.eventtap.event.types.keyDown }, function(ev)
+  if ev:getKeyCode() == escCode and recorder ~= nil then
+    stopRecording(true)
+    return true -- while recording, Esc belongs to the cancel, not the frontmost app
+  end
+  return false
+end)
+heybobPttEscTap:start()
