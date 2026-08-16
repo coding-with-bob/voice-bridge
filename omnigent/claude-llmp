@@ -1,0 +1,39 @@
+#!/bin/sh
+# claude-llmp — what Omnigent's claude-native harness launches instead of `claude`.
+#
+# Why this exists: an llmp launch token belongs to the *process* llmp minted it
+# for, and llmp revokes it the moment that process exits (audit reason
+# `process_gone` — 341 of 357 revocations on this machine). The Omnigent server
+# is long-lived and is necessarily started from something short-lived, so
+# whatever ANTHROPIC_AUTH_TOKEN it captured at startup dies with its owner while
+# the server keeps handing that dead token to every session it spawns.
+#
+# Measured, 2026-08-14: server up at 20:06:53, its token revoked at 20:09:35.
+# For two days after that every spawned session answered 401 and the pool still
+# looked healthy — env vars present, server green, sessions created.
+#
+# Launching through llmp makes each session its own launch: its own token,
+# minted here, revoked when this session exits. That is also the only way the
+# per-session binding works, which is what lets a subscription be switched
+# behind sessions that are already running.
+#
+# Wire it up in ~/.omnigent/config.yaml (stock Omnigent, configuration only):
+#
+#   harness:
+#     claude-native:
+#       command: /Users/felho/dev/hey-bob/omnigent/claude-llmp
+
+LLMP="${LLMP_BIN:-$(command -v llmp 2>/dev/null)}"
+[ -x "$LLMP" ] || LLMP="$HOME/.local/bin/llmp"
+
+if [ ! -x "$LLMP" ]; then
+  # No silent fallback to plain `claude`. A fallback here is exactly how a dead
+  # token stayed invisible for two days: the session still starts, still looks
+  # fine, and is simply attributed to nobody. Fail where it can be seen.
+  echo "claude-llmp: llmp not found (tried \$LLMP_BIN, PATH, ~/.local/bin/llmp)" >&2
+  exit 127
+fi
+
+# `--` ends llmp's own option parsing, so every argument reaches Claude Code
+# even when the first one happens to share a name with an llmp flag.
+exec "$LLMP" claude -- "$@"

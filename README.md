@@ -35,6 +35,21 @@ omnigent host                    # the host daemon that launches terminals local
 Start terminal work with `omnigent claude` rather than `claude` when you want that session to
 join the pool — voice reach-back can only see sessions the pool knows about.
 
+Point the claude-native harness at the llmp wrapper, so every spawned session is its own llmp
+launch rather than an heir to whatever token the server captured at startup (why:
+[Known platform quirks](#known-platform-quirks)). Stock Omnigent, configuration only:
+
+```yaml
+# ~/.omnigent/config.yaml
+harness:
+  claude-native:
+    command: /Users/felho/dev/hey-bob/omnigent/claude-llmp
+```
+
+The host daemon reads this at startup, so `omnigent host stop` + `omnigent host --background`
+after changing it — and start it with `ANTHROPIC_AUTH_TOKEN` / `ANTHROPIC_BASE_URL` unset, so
+there is no borrowed credential in it to go stale in the first place.
+
 ### 2. The code and the state home
 
 ```bash
@@ -45,6 +60,10 @@ ln -sf ~/.bun/bin/bobsay ~/.local/bin/bobsay
 
 `~/bob` is the state home: `defaults.yaml`, the ledgers, and the fallback workspace. It is its
 own git repo and holds no code.
+
+Spawned sessions run on `session_model` / `session_effort` from that file (`claude-opus-5`,
+`high`), stated on every launch. Leaving them to Claude Code's own default would mean the model
+you last picked for your own terminal silently becomes the model the voice bridge thinks with.
 
 **It is also a transcript of everything you have ever said to the machine, and everything it has
 said back.** That is the point — reach-back reads it — but it means the repo has no business
@@ -182,6 +201,16 @@ into files (D9), and that is a hardening trigger.
   Plain `claude` is therefore authenticated in a terminal and *not logged in* under Raycast or
   launchd. The router detects and uses `llmp claude`; `bob doctor`'s **router** check exercises
   the real decision call so this can never fail silently again.
+- **An llmp launch token belongs to a *process*, and dies with it.** llmp revokes a token the
+  moment the process it was minted for exits (audit reason `process_gone`). A long-lived daemon
+  started from something short-lived — which the Omnigent server always is — therefore ends up
+  holding a dead token and handing it to every session it spawns. Measured 2026-08-14: server up
+  at 20:06:53, its token revoked at 20:09:35, and for two days after that every spawned session
+  answered 401 while the pool looked perfectly healthy. Fixed by spawning through
+  [`omnigent/claude-llmp`](omnigent/claude-llmp) so each session is its own llmp launch with its
+  own token — which is also what makes llmp's per-session binding, and switching subscriptions
+  behind running sessions, work at all. `bob doctor`'s **spawn** check is what catches a
+  regression here.
 - **`pending_elicitations_count` did not reflect a visibly pending approval card** (observed
   2026-08-14). Reported upstream; nothing of ours depends on it.
 
