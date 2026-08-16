@@ -203,6 +203,8 @@ async function gatherContext(
       dispatches,
       decisions,
       projectsRoot: deps.projectsRoot,
+      sessionModels: deps.config.session_models,
+      sessionModel: deps.config.session_model,
       projectDirs: deps.projectDirs,
       homeDir: deps.config.home_dir,
       followupWindowMin: deps.config.followup_window_min,
@@ -295,6 +297,7 @@ async function decide(
     const executable = checkExecutable(decision, {
       candidateIds: addressableIds(context),
       placement: { projectsRoot: deps.projectsRoot, homeDir: deps.config.home_dir },
+      allowedModels: new Set(deps.config.session_models),
     });
     if (!executable.ok) return fallbackWith(`decision is not executable: ${executable.reason}`);
 

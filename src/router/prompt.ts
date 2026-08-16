@@ -18,7 +18,7 @@ import type { RoutingContext } from "./context.ts";
  * Bumped whenever the wording changes. The live regression run records it next to the model
  * id, so a table result can be attributed to a specific prompt rather than to "the router".
  */
-export const PROMPT_VERSION = "2026-08-16.1";
+export const PROMPT_VERSION = "2026-08-16.2";
 
 export const SYSTEM_PROMPT = `You are the router of a voice bridge. A person speaks a request out loud; your only job is to decide WHERE it goes.
 
@@ -28,7 +28,7 @@ Reply with exactly one JSON object and nothing else: no prose, no explanation, n
 
 Allowed shapes:
 {"action":"continue","session_id":"<an id from the candidate list>","request":"<the request as the session should receive it>","ack":"<one short spoken sentence>"}
-{"action":"new","cwd":"<an absolute directory from the list below>","request":"<the request as the session should receive it>","ack":"<one short spoken sentence>"}
+{"action":"new","cwd":"<an absolute directory from the list below>","request":"<the request as the session should receive it>","ack":"<one short spoken sentence>","model":"<optional, from MODELS YOU MAY BE ASKED FOR>","effort":"<optional: low|medium|high|xhigh|max>"}
 {"action":"clarify","question":"<one short spoken question>"}
 {"action":"lookup_ledger","query":"<a few distinctive words>"}
 
@@ -51,7 +51,9 @@ Rules that hold in every branch:
   - with "action":"new" it announces a new session and names the place. English: "New session: craft." Hungarian: "Új session: craft."
   - with "action":"continue" it names the existing session it went to. English: "Sent to the subtitle session." Hungarian: "Beküldve a subtitle sessionnek."
   Keep the word "session" untranslated in every language, so the two forms stay recognisable by ear. A sentence that fits both is wrong: "I've sent it to craft" hides whether anything was started.
-- "question" is likewise one short spoken sentence in the language of the utterance.`;
+- "question" is likewise one short spoken sentence in the language of the utterance.
+- A "new" session may be asked for a specific model or effort ("csináld Fable-lel", "with Sonnet, quickly"). Set "model" only from MODELS YOU MAY BE ASKED FOR — never invent one — and drop the naming from "request", which is about the work and not about how to run it. Say the model in the ack when one was asked for. Leave both out when the utterance names neither.
+- A running session's model is fixed when it was born, so a model asked for alongside a "continue" cannot be applied. Still continue that session, and say in the ack that the model stayed as it was.`;
 
 export function buildUserPrompt(context: RoutingContext, utterance: string, now: Date): string {
   return [
@@ -73,6 +75,10 @@ export function buildUserPrompt(context: RoutingContext, utterance: string, now:
     context.project_dirs.length === 0
       ? "(none)"
       : context.project_dirs.map((name) => `- ${name}`).join("\n"),
+    "",
+    `MODELS YOU MAY BE ASKED FOR — a new session runs on ${context.session_model} unless the`,
+    'utterance names one of these instead, in which case put it in "model":',
+    context.session_models.map((name) => `- ${name}`).join("\n"),
     "",
     "UTTERANCE:",
     utterance,

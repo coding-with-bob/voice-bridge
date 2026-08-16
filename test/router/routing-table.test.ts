@@ -40,6 +40,15 @@ function assertRow(testCase: RoutingCase, outcome: RunOutcome, live: boolean): v
   if (testCase.expect.cwd !== undefined) {
     const expected = resolveExpectedCwd(testCase.expect.cwd, outcome.homeDir);
     expect(outcome.created.map((created) => created.workspace)).toEqual([expected]);
+    // Every birth states its model. A row that expects none is expecting the configured
+    // default — never "whatever the machine happened to be set to".
+    expect(outcome.created[0]?.model).toBe(testCase.expect.model ?? DEFAULT_CONFIG.session_model);
+  }
+
+  // Naming a model is an instruction about the launch, not part of the work. If it survives
+  // into the request, the session is told to do something about Fable.
+  for (const word of testCase.expect.requestExcludes ?? []) {
+    for (const message of outcome.messages) expect(message.text).not.toContain(word);
   }
 
   if (testCase.expect.reachback !== undefined) {

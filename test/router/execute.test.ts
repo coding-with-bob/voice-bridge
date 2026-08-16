@@ -23,6 +23,8 @@ afterEach(() => {
 });
 
 const candidateIds = new Set(["s1", "s2"]);
+/** The closed model vocabulary the router is allowed to pick from. */
+const allowedModels = new Set(["claude-opus-5", "claude-fable-5"]);
 /** Wide bounds for the cases that are not about placement. */
 let placement: { projectsRoot: string; homeDir: string };
 beforeEach(() => {
@@ -32,7 +34,7 @@ beforeEach(() => {
 describe("checkExecutable — a valid schema is not a valid address", () => {
   test("continue to a session in the pool passes", () => {
     const decision: RouterDecision = { action: "continue", session_id: "s1", request: "r", ack: "a" };
-    expect(checkExecutable(decision, { candidateIds, placement })).toEqual({ ok: true });
+    expect(checkExecutable(decision, { candidateIds, placement, allowedModels })).toEqual({ ok: true });
   });
 
   test("a hallucinated session id is caught before any side effect", () => {
@@ -42,14 +44,14 @@ describe("checkExecutable — a valid schema is not a valid address", () => {
       request: "r",
       ack: "a",
     };
-    const result = checkExecutable(decision, { candidateIds, placement });
+    const result = checkExecutable(decision, { candidateIds, placement, allowedModels });
     expect(result.ok).toBe(false);
     if (!result.ok) expect(result.reason).toContain("conv_imaginary");
   });
 
   test("new into an existing directory passes", () => {
     const decision: RouterDecision = { action: "new", cwd: dir, request: "r", ack: "a" };
-    expect(checkExecutable(decision, { candidateIds, placement })).toEqual({ ok: true });
+    expect(checkExecutable(decision, { candidateIds, placement, allowedModels })).toEqual({ ok: true });
   });
 
   test("a nonexistent path is caught", () => {
@@ -59,7 +61,7 @@ describe("checkExecutable — a valid schema is not a valid address", () => {
       request: "r",
       ack: "a",
     };
-    const result = checkExecutable(decision, { candidateIds, placement });
+    const result = checkExecutable(decision, { candidateIds, placement, allowedModels });
     expect(result.ok).toBe(false);
     if (!result.ok) expect(result.reason).toContain("not an existing directory");
   });
@@ -67,14 +69,14 @@ describe("checkExecutable — a valid schema is not a valid address", () => {
   test("a file is not a workspace", () => {
     const file = join(dir, "README.md");
     writeFileSync(file, "not a directory");
-    const result = checkExecutable({ action: "new", cwd: file, request: "r", ack: "a" }, { candidateIds, placement });
+    const result = checkExecutable({ action: "new", cwd: file, request: "r", ack: "a" }, { candidateIds, placement, allowedModels });
     expect(result.ok).toBe(false);
   });
 
   test("a relative path is rejected — placement must be unambiguous", () => {
     const result = checkExecutable(
       { action: "new", cwd: "dev/craft", request: "r", ack: "a" },
-      { candidateIds, placement },
+      { candidateIds, placement, allowedModels },
     );
     expect(result.ok).toBe(false);
     if (!result.ok) expect(result.reason).toContain("absolute");
@@ -90,6 +92,7 @@ describe("checkExecutable — a valid schema is not a valid address", () => {
     // Built per test: `dir` only exists once beforeEach has made it.
     const bounded = () => ({
       candidateIds,
+      allowedModels,
       placement: { projectsRoot: join(dir, "dev"), homeDir: join(dir, "bob") },
     });
     const newIn = (cwd: string): RouterDecision => ({ action: "new", cwd, request: "r", ack: "a" });
@@ -127,14 +130,45 @@ describe("checkExecutable — a valid schema is not a valid address", () => {
     });
   });
 
+  /**
+   * The model is a closed vocabulary, exactly like the placement paths: the prompt offers a
+   * list and forbids inventing, and this is what holds it to that. An invented model would
+   * otherwise reach `--model` and fail inside a terminal nobody is watching.
+   */
+  test("a model from the offered vocabulary passes", () => {
+    const decision: RouterDecision = {
+      action: "new",
+      cwd: dir,
+      request: "r",
+      ack: "a",
+      model: "claude-fable-5",
+    };
+    expect(checkExecutable(decision, { candidateIds, placement, allowedModels })).toEqual({
+      ok: true,
+    });
+  });
+
+  test("a model nobody offered is caught before the session is born", () => {
+    const decision: RouterDecision = {
+      action: "new",
+      cwd: dir,
+      request: "r",
+      ack: "a",
+      model: "claude-imaginary-9",
+    };
+    const result = checkExecutable(decision, { candidateIds, placement, allowedModels });
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.reason).toContain("claude-imaginary-9");
+  });
+
   test("clarify is always executable — it touches nothing", () => {
-    expect(checkExecutable({ action: "clarify", question: "which?" }, { candidateIds, placement })).toEqual({
+    expect(checkExecutable({ action: "clarify", question: "which?" }, { candidateIds, placement, allowedModels })).toEqual({
       ok: true,
     });
   });
 
   test("a ledger lookup is rejected until the mechanism exists", () => {
-    const result = checkExecutable({ action: "lookup_ledger", query: "subtitle" }, { candidateIds, placement });
+    const result = checkExecutable({ action: "lookup_ledger", query: "subtitle" }, { candidateIds, placement, allowedModels });
     expect(result.ok).toBe(false);
   });
 });
@@ -215,6 +249,31 @@ describe("executeDecision", () => {
       model: "claude-opus-5",
       effort: "high",
     });
+  });
+
+  test("a model named in the utterance wins over the configured default", async () => {
+    const stub = stubClient();
+    await executeDecision(
+      {
+        action: "new",
+        cwd: "/tmp",
+        request: "summarise the PDF",
+        ack: "Új session Fable-lel: queries.",
+        model: "claude-fable-5",
+        effort: "medium",
+      },
+      deps(stub.client),
+    );
+    expect(stub.created[0]).toMatchObject({ model: "claude-fable-5", effort: "medium" });
+  });
+
+  test("naming neither falls back to config, so the common case stays the decided one", async () => {
+    const stub = stubClient();
+    await executeDecision(
+      { action: "new", cwd: "/tmp", request: "summarise the PDF", ack: "a" },
+      deps(stub.client),
+    );
+    expect(stub.created[0]).toMatchObject({ model: "claude-opus-5", effort: "high" });
   });
 
   test("new prefixes the first message with the delimited id block", async () => {

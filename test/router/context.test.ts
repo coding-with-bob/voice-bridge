@@ -33,6 +33,8 @@ const input = (overrides: Partial<ContextInput> = {}): ContextInput => ({
   spoken: [],
   dispatches: [],
   projectsRoot: "/Users/felho/dev",
+  sessionModels: ["claude-opus-5", "claude-fable-5"],
+  sessionModel: "claude-opus-5",
   projectDirs: ["craft", "confpipeline"],
   homeDir: "/Users/felho/bob",
   followupWindowMin: 30,

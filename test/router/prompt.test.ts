@@ -26,6 +26,8 @@ const context = (overrides: Partial<RoutingContext> = {}): RoutingContext => ({
   recent_exchanges: [],
   projects_root: "/Users/felho/dev",
   project_dirs: ["craft", "confpipeline"],
+  session_models: ["claude-opus-5", "claude-fable-5"],
+  session_model: "claude-opus-5",
   home_dir: "/Users/felho/bob",
   followup_window_min: 30,
   candidate_window_days: 14,
@@ -100,6 +102,18 @@ describe("SYSTEM_PROMPT — the discipline is stated, not implied", () => {
     expect(SYSTEM_PROMPT).toContain("New session: craft.");
     expect(SYSTEM_PROMPT).toContain("Sent to the subtitle session.");
     expect(SYSTEM_PROMPT).toContain('Keep the word "session" untranslated');
+  });
+
+  /**
+   * Model choice is a birth property, like placement — so it is offered the same way: a
+   * closed list plus "never invent", held to it afterwards by the executability check.
+   * It cannot apply to a continue: Omnigent persists `terminal_launch_args` onto the
+   * session, so a revived session comes back on the model it was born with.
+   */
+  test("a model may be asked for by voice, on a new session only", () => {
+    expect(SYSTEM_PROMPT).toContain("MODELS YOU MAY BE ASKED FOR");
+    expect(SYSTEM_PROMPT).toContain("fixed when it was born");
+    expect(SYSTEM_PROMPT).toContain('drop the naming from "request"');
   });
 });
 

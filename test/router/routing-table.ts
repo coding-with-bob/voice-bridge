@@ -35,6 +35,10 @@ export interface RoutingExpectation {
   /** Compared after `~`/root expansion, so rows stay readable. */
   cwd?: string;
   reachback?: boolean;
+  /** The model the session is actually born on — config default when the row expects none. */
+  model?: string;
+  /** Words the request must not still carry: naming a model is not part of the work. */
+  requestExcludes?: string[];
 }
 
 export interface RoutingCase {
@@ -160,6 +164,29 @@ export const ROUTING_TABLE: RoutingCase[] = [
       { action: "new", cwd: join(PROJECTS_ROOT, "confpipeline"), request: "list the documents in the docs folder", ack: "ok" },
     ],
     expect: { action: "new", cwd: join(PROJECTS_ROOT, "confpipeline") },
+  },
+  {
+    // Free speech, no prefix convention: the model is named mid-sentence like any other
+    // aside, and the ack is what catches a misread. The naming must not survive into the
+    // request — the session is told what to do, never what to run on.
+    name: "a model named in the utterance is honoured and stripped from the request",
+    sessions: [],
+    utterance: "in confpipeline, csináld Fable-lel: listázd a docs mappa fájljait",
+    scripted: [
+      {
+        action: "new",
+        cwd: join(PROJECTS_ROOT, "confpipeline"),
+        request: "listázd a docs mappa fájljait",
+        ack: "Új session Fable-lel: confpipeline.",
+        model: "claude-fable-5",
+      },
+    ],
+    expect: {
+      action: "new",
+      cwd: join(PROJECTS_ROOT, "confpipeline"),
+      model: "claude-fable-5",
+      requestExcludes: ["Fable", "fable"],
+    },
   },
   {
     name: "a request belonging to no project is born at home",

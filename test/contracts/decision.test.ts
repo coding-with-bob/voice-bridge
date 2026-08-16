@@ -27,6 +27,39 @@ describe("C5 router decision — discriminated union", () => {
     expect(parsed.action).toBe("new");
   });
 
+  /**
+   * A spoken request may name the model the new session is born on. It is optional because
+   * the config default is the answer almost every time, and it lives only on `new`: Omnigent
+   * persists `terminal_launch_args` onto the session, so a revived session comes back on the
+   * model it was born with. There is no such thing as continuing a session differently.
+   */
+  test("a new decision may name the model and effort it is born with", () => {
+    const parsed = RouterDecisionSchema.parse({
+      action: "new",
+      cwd: "/Users/felho/dev/queries",
+      request: "summarise the PDF",
+      ack: "Új session Fable-lel: queries.",
+      model: "claude-fable-5",
+      effort: "medium",
+    });
+    expect(parsed.action).toBe("new");
+    if (parsed.action === "new") {
+      expect(parsed.model).toBe("claude-fable-5");
+      expect(parsed.effort).toBe("medium");
+    }
+  });
+
+  test("an effort Claude Code does not have is not a decision", () => {
+    const result = parseRouterDecision({
+      action: "new",
+      cwd: "/tmp",
+      request: "r",
+      ack: "a",
+      effort: "enthusiastic",
+    });
+    expect(result.ok).toBe(false);
+  });
+
   test("accepts clarify and lookup_ledger", () => {
     expect(
       RouterDecisionSchema.parse({ action: "clarify", question: "Which project?" }).action,

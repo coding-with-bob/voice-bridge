@@ -37,7 +37,12 @@ export interface PlacementBounds {
 
 export function checkExecutable(
   decision: RouterDecision,
-  context: { candidateIds: Set<string>; placement: PlacementBounds },
+  context: {
+    candidateIds: Set<string>;
+    placement: PlacementBounds;
+    /** The closed model vocabulary the prompt offered; membership is checked, never assumed. */
+    allowedModels: Set<string>;
+  },
 ): ExecutabilityResult {
   switch (decision.action) {
     case "continue":
@@ -60,6 +65,14 @@ export function checkExecutable(
           reason:
             `cwd "${decision.cwd}" is outside the offered placements ` +
             `(${context.placement.projectsRoot}/<name> or ${context.placement.homeDir})`,
+        };
+      }
+      if (decision.model !== undefined && !context.allowedModels.has(decision.model)) {
+        return {
+          ok: false,
+          reason:
+            `model "${decision.model}" is not one of the offered models ` +
+            `(${[...context.allowedModels].join(", ")})`,
         };
       }
       return { ok: true };
@@ -129,8 +142,9 @@ export async function executeDecision(
       const { id } = await deps.client.createSession({
         workspace: decision.cwd,
         permissionMode: deps.permissionMode,
-        model: deps.sessionModel,
-        effort: deps.sessionEffort,
+        // What the utterance asked for, else what was decided in config. Never the machine's.
+        model: decision.model ?? deps.sessionModel,
+        effort: decision.effort ?? deps.sessionEffort,
         appendSystemPrompt: deps.conventionText,
       });
       await deps.client.postMessage(id, routedMessage(id, decision.request));

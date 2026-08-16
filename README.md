@@ -65,6 +65,14 @@ Spawned sessions run on `session_model` / `session_effort` from that file (`clau
 `high`), stated on every launch. Leaving them to Claude Code's own default would mean the model
 you last picked for your own terminal silently becomes the model the voice bridge thinks with.
 
+A single request can override it out loud — *"in confpipeline, csináld Fable-lel: listázd a docs
+mappa fájljait"*. No prefix or keyword convention: the router picks the model out of ordinary
+speech, drops it from what the session is asked to do, and the ack says which model it used, so
+a misread is audible within a second. The choices are `session_models`, offered to the router as
+a list it may not add to and re-checked before the session is created. It applies to **new
+sessions only** — Omnigent persists the launch args, so a session comes back on the model it was
+born with, and asking for one alongside a continue is answered by the ack saying it stayed.
+
 **It is also a transcript of everything you have ever said to the machine, and everything it has
 said back.** That is the point — reach-back reads it — but it means the repo has no business
 acquiring a remote without a deliberate decision. It has none today.

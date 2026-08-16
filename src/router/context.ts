@@ -68,6 +68,10 @@ export interface RoutingContext {
   /** Directory names under the root — the placement vocabulary, so the model cannot invent a path. */
   project_dirs: string[];
   home_dir: string;
+  /** The model vocabulary, offered the same way placement is: a list, and nothing outside it. */
+  session_models: string[];
+  /** What a new session runs on when the utterance asks for nothing. */
+  session_model: string;
   followup_window_min: number;
   candidate_window_days: number;
   /** One line describing what the model saw; goes into the decision log for later forensics. */
@@ -83,6 +87,8 @@ export interface ContextInput {
   projectsRoot: string;
   projectDirs: string[];
   homeDir: string;
+  sessionModels: string[];
+  sessionModel: string;
   followupWindowMin: number;
   candidateWindowDays: number;
   now: Date;
@@ -122,6 +128,8 @@ export function buildContext(input: ContextInput): RoutingContext {
     projects_root: input.projectsRoot,
     project_dirs: input.projectDirs,
     home_dir: input.homeDir,
+    session_models: input.sessionModels,
+    session_model: input.sessionModel,
     followup_window_min: input.followupWindowMin,
     candidate_window_days: input.candidateWindowDays,
     digest: describeDigest(candidates, mostRecent),

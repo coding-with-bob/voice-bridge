@@ -45,9 +45,24 @@ export const BobConfigSchema = z.strictObject({
    * looking healthy.
    */
   session_effort: z.enum(["low", "medium", "high", "xhigh", "max"]),
+  /**
+   * The closed vocabulary a spoken request may pick from ("do it with Fable"). Offered to
+   * the router as a list it may not add to, and membership is re-checked before the session
+   * is created — the same shape as placement, for the same reason: a prompt is guidance and
+   * a contract is not.
+   */
+  session_models: z.array(z.string().min(1)).nonempty(),
   /** The canned sentence spoken by the C5 deterministic fallback. Runtime language is the owner's. */
   clarify_fallback_text: z.string().min(1),
-});
+})
+  /**
+   * A default outside the offered list would be a config that contradicts itself: the
+   * router could never ask for the model the bridge actually runs on.
+   */
+  .refine((config) => config.session_models.includes(config.session_model), {
+    message: "session_model must be one of session_models",
+    path: ["session_model"],
+  });
 export type BobConfig = z.infer<typeof BobConfigSchema>;
 
 export const DEFAULT_CONFIG: Omit<BobConfig, "home_dir"> = {
@@ -60,5 +75,6 @@ export const DEFAULT_CONFIG: Omit<BobConfig, "home_dir"> = {
   router_model: "claude-opus-5",
   session_model: "claude-opus-5",
   session_effort: "high",
+  session_models: ["claude-opus-5", "claude-fable-5", "claude-sonnet-5"],
   clarify_fallback_text: "Nem értettem, hova tartozik ez. Mondanád másképp?",
 };

@@ -32,12 +32,28 @@ export const ContinueDecisionSchema = z.object({
   candidates,
 });
 
+/** The set Claude Code's `--effort` accepts; a value outside it is not a decision. */
+export const EffortSchema = z.enum(["low", "medium", "high", "xhigh", "max"]);
+
 export const NewDecisionSchema = z.object({
   action: z.literal("new"),
   /** Placement: an existing directory the new session is born in. */
   cwd: z.string().min(1),
   request: z.string().min(1),
   ack: z.string().min(1),
+  /**
+   * The model this session is born on, when the utterance asked for one by name. Optional:
+   * absent means the configured default, which is the answer almost every time.
+   *
+   * It exists on `new` alone, and that is not an omission. Omnigent persists
+   * `terminal_launch_args` onto the session and relaunches with them, so a revived session
+   * comes back on the model it was born with — there is no continuing a session differently.
+   *
+   * Like `cwd`, it is offered as a closed vocabulary and checked for membership before the
+   * session is created; the schema only says the shape is right.
+   */
+  model: z.string().min(1).optional(),
+  effort: EffortSchema.optional(),
   candidates,
 });
 
