@@ -20,8 +20,12 @@ key, pauses are free. (The full research is in bob-jarvis:
    ```bash
    mkdir -p ~/.hammerspoon
    ln -sf ~/dev/hey-bob/hammerspoon/heybob-ptt.lua ~/.hammerspoon/heybob-ptt.lua
+   grep -q hs.ipc ~/.hammerspoon/init.lua 2>/dev/null || echo 'require("hs.ipc")' >> ~/.hammerspoon/init.lua
    grep -q heybob-ptt ~/.hammerspoon/init.lua 2>/dev/null || echo 'require("heybob-ptt")' >> ~/.hammerspoon/init.lua
    ```
+   `hs.ipc` is not part of the PTT — it opens the message port the `hs` CLI needs, so the
+   config can be reloaded and inspected from the terminal (`hs -c "hs.reload()"`) instead of
+   relaunching the app.
 3. Launch Hammerspoon and grant the two permissions it asks for, both one-time:
    **Accessibility** (the event tap that sees the key) and **Microphone** (the ffmpeg it
    spawns records under Hammerspoon's identity). Enable *Launch Hammerspoon at login* in its
