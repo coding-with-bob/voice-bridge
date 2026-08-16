@@ -53,6 +53,16 @@ function assertRow(testCase: RoutingCase, outcome: RunOutcome, live: boolean): v
     expect(result.executed).toBe(false);
   }
 
+  // The ack is what a misroute is caught by, so the kind of destination has to be audible in
+  // it. This is an invariant of the action, not of the row — no row has to opt in. Live only:
+  // in mocked mode the acks are ours, and asserting our own fixtures proves nothing.
+  if (live && testCase.expect.action !== "clarify") {
+    // `\b` is ASCII-only in JS, so `\búj` never matches "Új session" at the start of a
+    // sentence. Anchor on start-or-space instead, and keep the `u` flag for case folding.
+    const announcesNew = /(?:^|\s)(?:new|új)\s+session/iu.test(result.spoken);
+    expect(announcesNew).toBe(testCase.expect.action === "new");
+  }
+
   if (!live && testCase.mockExpect !== undefined) {
     if (testCase.mockExpect.peeked !== undefined) {
       expect(result.peeked).toBe(testCase.mockExpect.peeked);

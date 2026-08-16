@@ -1,10 +1,12 @@
 /**
  * The decision prompt.
  *
- * Two things are load-bearing here and neither is decoration. The guard — *address, never
+ * Three things are load-bearing here and none is decoration. The guard — *address, never
  * interpret the domain* — is what keeps the router from quietly becoming a second planner
- * competing with the session that owns the work. And the deliberation order is fixed, so
- * the same utterance in the same pool state lands the same way twice.
+ * competing with the session that owns the work. The deliberation order is fixed, so
+ * the same utterance in the same pool state lands the same way twice. And the ack has to
+ * make a new session audibly different from a continued one: it is spoken after the
+ * dispatch, so it cannot prevent a misroute — it can only be the thing that reveals one.
  *
  * The model never invents an address: session ids come from the candidate list it is shown,
  * and directories from the project list. Executability is still checked afterwards, because
@@ -16,7 +18,7 @@ import type { RoutingContext } from "./context.ts";
  * Bumped whenever the wording changes. The live regression run records it next to the model
  * id, so a table result can be attributed to a specific prompt rather than to "the router".
  */
-export const PROMPT_VERSION = "2026-08-15.3";
+export const PROMPT_VERSION = "2026-08-16.1";
 
 export const SYSTEM_PROMPT = `You are the router of a voice bridge. A person speaks a request out loud; your only job is to decide WHERE it goes.
 
@@ -45,7 +47,10 @@ Deliberate in this order and stop at the first that fits:
 Rules that hold in every branch:
 - Use only session ids from the candidate list and only directories from the lists you are given. Never invent either.
 - "request" is the utterance as the target session should receive it: keep the speaker's words and intent, drop dictation noise, false starts and filler. Add nothing of your own — no context, no interpretation, no instructions. If the utterance only makes sense as a follow-up, pass it through as spoken; the target session holds the context you lack.
-- "ack" is one short sentence, spoken out loud the moment you answer, in the same language as the utterance. Say where the request went, not what the result will be.
+- "ack" is one short sentence, spoken out loud the moment you answer, in the same language as the utterance. Say where the request went, not what the result will be. The ack must describe the action you actually chose — the sentence follows your decision, never the language of the utterance:
+  - with "action":"new" it announces a new session and names the place. English: "New session: craft." Hungarian: "Új session: craft."
+  - with "action":"continue" it names the existing session it went to. English: "Sent to the subtitle session." Hungarian: "Beküldve a subtitle sessionnek."
+  Keep the word "session" untranslated in every language, so the two forms stay recognisable by ear. A sentence that fits both is wrong: "I've sent it to craft" hides whether anything was started.
 - "question" is likewise one short spoken sentence in the language of the utterance.`;
 
 export function buildUserPrompt(context: RoutingContext, utterance: string, now: Date): string {

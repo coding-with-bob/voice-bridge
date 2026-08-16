@@ -81,6 +81,26 @@ describe("SYSTEM_PROMPT — the discipline is stated, not implied", () => {
   test("states that a sleeping session is a normal target", () => {
     expect(SYSTEM_PROMPT).toContain("A sleeping session is a normal target");
   });
+
+  /**
+   * The ack is the whole early-warning system for a misroute: the person hears where the
+   * request went and corrects by ear. That only works if a new session and a continued one
+   * cannot be mistaken for each other — "I've sent it to craft" fits both and so warns of
+   * nothing.
+   *
+   * The binding to the action is stated because a worked example alone is not enough.
+   * Observed live (2026-08-16, opus-5): given a Hungarian utterance the model chose the
+   * Hungarian *sentence pattern* over its own branch, answering `new` while announcing
+   * "Beküldve a sorozat letöltés sessionnek" — a continue, naming the one session in sight.
+   * An ack that contradicts the decision is worse than a vague one: it reports a misroute
+   * that did not happen and hides the one that did.
+   */
+  test("the ack separates a new session from a continued one, audibly", () => {
+    expect(SYSTEM_PROMPT).toContain("must describe the action you actually chose");
+    expect(SYSTEM_PROMPT).toContain("New session: craft.");
+    expect(SYSTEM_PROMPT).toContain("Sent to the subtitle session.");
+    expect(SYSTEM_PROMPT).toContain('Keep the word "session" untranslated');
+  });
 });
 
 describe("buildUserPrompt", () => {
