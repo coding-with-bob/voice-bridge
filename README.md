@@ -80,6 +80,7 @@ round trip in a throwaway session it deletes afterwards.
 | Command | What it does |
 |---|---|
 | `bob route "<utterance>"` | Decide where the utterance goes, dispatch it, speak an acknowledgement, exit. `--dry-run` decides and logs without touching the pool or the speakers; `--json` for the full decision. |
+| `bob dictate <audio-file>` | Transcribe a recording with ElevenLabs Scribe, then run the same route pipeline on the transcript — the PTT entry's second half. Silence routes nothing and exits 0. `--stt-only` prints the transcript without routing; `--dry-run` and `--json` as on `route`. Needs the `ELEVENLABS_API_KEY` with the **speech_to_text** permission enabled; `ELEVENLABS_STT_MODEL_ID` overrides the model (default `scribe_v2`). |
 | `bob doctor` | The eight platform checks. `--quick` skips the spawn smoke test; `--json` for machines. Exit 1 on any failure, 2 on broken config. |
 | `bob log` | The three logs as one timeline. `--reachbacks` for reach-backs only, `--spoken` / `--decisions` / `--gc` to narrow, `-n` for how many, `--json`. |
 | `bob gc` | Stop sessions idle beyond `gc_idle_hours`. **Stop only — never delete.** `--dry-run` lists what it would touch. |

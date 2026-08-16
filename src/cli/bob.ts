@@ -18,7 +18,8 @@ import { runGc, type GcResult } from "../gc/run.ts";
 import { appendGcEntry } from "../gc/log.ts";
 import { speak } from "../say/speak.ts";
 import { sayEngine } from "../say/engines/say.ts";
-import { elevenLabsEngine } from "../say/engines/elevenlabs.ts";
+import { elevenLabsEngine, resolveApiKey } from "../say/engines/elevenlabs.ts";
+import { transcribeFile } from "../stt/scribe.ts";
 import { separatePositional } from "./argv.ts";
 
 const program = new Command();
@@ -36,30 +37,7 @@ program
   .option("--dry-run", "decide and log, but touch neither the pool nor the speakers")
   .action(async (utterance: string, options: { json?: boolean; dryRun?: boolean }) => {
     try {
-      const { config, paths } = loadConfig();
-      const result = await route(utterance, {
-        client: new OmnigentClient({ baseUrl: config.omnigent_url }),
-        config,
-        paths,
-        modelCall: claudeCliCall,
-        conventionText: readConvention(paths.conventionFile),
-        projectsRoot: PROJECTS_ROOT,
-        projectDirs: listProjectDirs(),
-        speak: async (text: string) => {
-          // Sessionless on purpose: a router ack is not an interaction with any session,
-          // so the recency derivation must not see it as one.
-          await speak({
-            text,
-            sessionId: null,
-            homeDir: config.home_dir,
-            defaultVoice: config.default_voice,
-            speed: config.elevenlabs_speed,
-            engines: { say: sayEngine, elevenlabs: elevenLabsEngine },
-          });
-        },
-        ...(options.dryRun === true ? { dryRun: true } : {}),
-      });
-
+      const result = await runRoute(utterance, options.dryRun === true);
       if (options.json) console.log(JSON.stringify(result, null, 2));
       else printRouteResult(result, options.dryRun === true);
     } catch (error) {
@@ -67,6 +45,82 @@ program
       process.exit(isSetupError(error) ? 2 : 1);
     }
   });
+
+program
+  .command("dictate")
+  .description("transcribe a recorded utterance (ElevenLabs Scribe) and route it — the PTT entry")
+  .argument("<audio-file>", "path to the recording")
+  .option("--json", "emit transcript and decision as JSON")
+  .option("--dry-run", "transcribe and decide, but touch neither the pool nor the speakers")
+  .option("--stt-only", "transcribe and print, without routing")
+  .action(
+    async (audioFile: string, options: { json?: boolean; dryRun?: boolean; sttOnly?: boolean }) => {
+      try {
+        const apiKey = await resolveApiKey({});
+        if (apiKey === null) {
+          throw new ConfigError(
+            "no ELEVENLABS_API_KEY in the environment or Keychain — Scribe needs the same key bobsay uses",
+          );
+        }
+        const modelId = process.env.ELEVENLABS_STT_MODEL_ID?.trim();
+        const transcript = await transcribeFile({
+          filePath: audioFile,
+          apiKey,
+          ...(modelId !== undefined && modelId !== "" ? { modelId } : {}),
+        });
+
+        if (transcript.text.trim() === "") {
+          // Mirrors the Raycast entry: silence is a non-event, not an error.
+          if (options.json) console.log(JSON.stringify({ transcript, route: null }, null, 2));
+          else console.log("Heard nothing to route.");
+          return;
+        }
+
+        if (options.sttOnly === true) {
+          if (options.json) console.log(JSON.stringify({ transcript, route: null }, null, 2));
+          else console.log(transcript.text);
+          return;
+        }
+
+        const result = await runRoute(transcript.text, options.dryRun === true);
+        if (options.json) console.log(JSON.stringify({ transcript, route: result }, null, 2));
+        else {
+          console.log(`heard: ${transcript.text}`);
+          printRouteResult(result, options.dryRun === true);
+        }
+      } catch (error) {
+        console.error(`bob dictate: ${error instanceof Error ? error.message : String(error)}`);
+        process.exit(isSetupError(error) ? 2 : 1);
+      }
+    },
+  );
+
+/** The one route pipeline both entries share: `route` gets text, `dictate` gets audio. */
+async function runRoute(utterance: string, dryRun: boolean): Promise<RouteResult> {
+  const { config, paths } = loadConfig();
+  return route(utterance, {
+    client: new OmnigentClient({ baseUrl: config.omnigent_url }),
+    config,
+    paths,
+    modelCall: claudeCliCall,
+    conventionText: readConvention(paths.conventionFile),
+    projectsRoot: PROJECTS_ROOT,
+    projectDirs: listProjectDirs(),
+    speak: async (text: string) => {
+      // Sessionless on purpose: a router ack is not an interaction with any session,
+      // so the recency derivation must not see it as one.
+      await speak({
+        text,
+        sessionId: null,
+        homeDir: config.home_dir,
+        defaultVoice: config.default_voice,
+        speed: config.elevenlabs_speed,
+        engines: { say: sayEngine, elevenlabs: elevenLabsEngine },
+      });
+    },
+    ...(dryRun ? { dryRun: true } : {}),
+  });
+}
 
 program
   .command("doctor")
@@ -166,8 +220,8 @@ program
 // so one positional is skipped before the text is protected.
 await program.parseAsync(
   separatePositional(process.argv.slice(2), {
-    booleanOptions: ["--json", "--dry-run", "--quick", "--spoken", "--decisions", "--gc",
-                     "--reachbacks", "-h", "--help", "-V", "--version"],
+    booleanOptions: ["--json", "--dry-run", "--quick", "--stt-only", "--spoken", "--decisions",
+                     "--gc", "--reachbacks", "-h", "--help", "-V", "--version"],
     valueOptions: ["-n", "--count"],
     skipPositionals: 1,
   }),
