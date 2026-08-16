@@ -47,9 +47,22 @@ export function readConvention(conventionFile: string): string {
  * The session id cannot travel in the convention text — it does not exist until the session
  * is created. It rides the first message instead, in a delimited block the convention tells
  * the session to treat as transport metadata and never as content.
+ *
+ * The speak rule rides in the block too, not only in the spawn-time convention. Launch args
+ * freeze the convention at spawn and revival replays the frozen copy, so a long-lived session
+ * never learns a later amendment — the first silent finish (2026-08-16) was exactly that: a
+ * session whose frozen text predated "block means spoken, answer out loud". The block reaches
+ * every session on every routed message, so the rule travels where the convention cannot.
+ * Invariant: no `]` before the closing bracket — the strip regex cuts at the first one.
  */
 export function metadataBlock(sessionId: string): string {
-  return `[bob metadata — not part of the request: your session id is ${sessionId}]`;
+  return (
+    `[bob metadata — not part of the request: your session id is ${sessionId}. ` +
+    `This request was spoken — Felho may not be watching any terminal — so on top of ` +
+    `whatever you print, speak your answer: bobsay --session ${sessionId} "<what to say>". ` +
+    `One plain sentence when you report on work; the whole answer when the answer itself ` +
+    `is what was asked to be heard]`
+  );
 }
 
 /** Anything wearing the metadata block's clothes, wherever it appears. */

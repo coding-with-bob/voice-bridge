@@ -218,9 +218,7 @@ describe("executeDecision", () => {
       deps(stub.client),
     );
     expect(stub.messages[0]!.id).toBe("conv_fresh");
-    expect(stub.messages[0]!.text).toBe(
-      `[bob metadata — not part of the request: your session id is conv_fresh]\n\nsummarise it`,
-    );
+    expect(stub.messages[0]!.text).toBe(`${metadataBlock("conv_fresh")}\n\nsummarise it`);
     expect(outcome.targetSessionId).toBe("conv_fresh");
   });
 
@@ -292,8 +290,32 @@ describe("readConvention", () => {
 describe("routedMessage", () => {
   test("is the block, a blank line, then the request", () => {
     expect(routedMessage("abc", "do the thing")).toBe(
-      "[bob metadata — not part of the request: your session id is abc]\n\ndo the thing",
+      '[bob metadata — not part of the request: your session id is abc. ' +
+        "This request was spoken — Felho may not be watching any terminal — so on top of " +
+        'whatever you print, speak your answer: bobsay --session abc "<what to say>". ' +
+        "One plain sentence when you report on work; the whole answer when the answer itself " +
+        "is what was asked to be heard]\n\ndo the thing",
     );
+  });
+
+  /**
+   * The speak rule rides inside the block itself, not only in the spawn-time convention.
+   * Long-lived sessions keep the convention their launch args froze at spawn — the first
+   * silent finish (2026-08-16) came from exactly such a session, whose frozen text predated
+   * the "block means spoken, answer out loud" amendment. The block is the only channel that
+   * reaches every session on every message, so the rule travels there.
+   */
+  test("the block itself tells a stale session to speak, with the session id in the command", () => {
+    const block = metadataBlock("conv_stale");
+    expect(block).toContain('bobsay --session conv_stale');
+    expect(block).toContain("spoken");
+  });
+
+  test("the block stays a single bracketed unit — one closing bracket, at the very end", () => {
+    // The strip regex removes `[bob metadata…]` up to the FIRST `]`; a `]` inside the block
+    // would leave its tail behind as smuggleable content.
+    const block = metadataBlock("abc");
+    expect(block.indexOf("]")).toBe(block.length - 1);
   });
 
   /**

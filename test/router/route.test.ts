@@ -3,6 +3,7 @@ import { mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from "node
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { route, RouteError, type RouteDeps } from "../../src/router/route.ts";
+import { metadataBlock } from "../../src/router/convention.ts";
 import { readDecisionEntries } from "../../src/router/decision-log.ts";
 import { pathsFor } from "../../src/config/load.ts";
 import { DEFAULT_CONFIG } from "../../src/contracts/config.ts";
@@ -80,9 +81,7 @@ describe("route — continue", () => {
     const result = await route("and the other one too", deps);
 
     expect(result.decision.action).toBe("continue");
-    expect(messages).toEqual([
-      { id: "s1", text: "[bob metadata — not part of the request: your session id is s1]\n\ndo it" },
-    ]);
+    expect(messages).toEqual([{ id: "s1", text: `${metadataBlock("s1")}\n\ndo it` }]);
     expect(spoken).toEqual(["Passing it on."]);
     expect(result.executed).toBe(true);
     expect(result.target_session_id).toBe("s1");

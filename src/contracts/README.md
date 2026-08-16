@@ -82,7 +82,7 @@ after `createSession` returns. The router therefore prefixes **every message it 
 `continue` included, not just the first on spawn — with a delimited metadata block:
 
 ```
-[bob metadata — not part of the request: your session id is <id>]
+[bob metadata — not part of the request: your session id is <id>. This request was spoken — Felho may not be watching any terminal — so on top of whatever you print, speak your answer: bobsay --session <id> "<what to say>". One plain sentence when you report on work; the whole answer when the answer itself is what was asked to be heard]
 ```
 
 The convention states that this block is transport metadata: never quote it, never treat it as
@@ -96,6 +96,15 @@ tell the two apart and had to guess the medium of its answer; the first real day
 that failure — a voice question answered in markdown, in silence. Migration note: sessions spawned
 before the amendment carry the older convention text in their system prompt (there is no way to
 re-inject it), so the rule fully lands for sessions born from now on; the old pool ages out.
+
+**The block carries the speak rule inline** (amended 2026-08-16, after the migration note above
+came due). The "old pool ages out" bet lost within a day: a session spawned the morning before the
+voice-signal amendment was revived — revival replays the launch args, frozen convention included —
+and answered a spoken question in markdown, in silence. There is no way to re-inject a system
+prompt, but the block reaches every session on every routed message, so the speak rule (spoken
+request → answer out loud, sized report-vs-answer) now rides inside the block itself instead of
+only pointing at convention text a stale session may not have. Invariant the tests pin: no `]`
+before the closing bracket, or the strip regex would leave a smuggleable tail.
 
 **Speech comes in two sizes** (amended 2026-08-15, same day, second failure). The convention
 distinguishes *reporting on work* — one plain sentence, as before — from *the answer itself being
