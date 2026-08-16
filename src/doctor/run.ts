@@ -53,6 +53,12 @@ export interface DoctorDeps {
   /** The router's decision call, exercised the same way routing exercises it. */
   modelCall: ModelCall;
   routerModel: string;
+  /**
+   * The launch shape routing uses. The smoke test spawns with the same model and effort it
+   * does, or a green doctor would say nothing about the sessions the bridge actually starts.
+   */
+  sessionModel: string;
+  sessionEffort: string;
   smokeTimeoutMs?: number;
   sleep?: (ms: number) => Promise<void>;
   now?: () => number;
@@ -261,6 +267,8 @@ async function spawnCheck(deps: DoctorDeps): Promise<CheckResult> {
     const created = await deps.client.createSession({
       workspace: "/tmp",
       permissionMode: "bypassPermissions",
+      model: deps.sessionModel,
+      effort: deps.sessionEffort,
       title: "bob-doctor-smoke",
     });
     sessionId = created.id;

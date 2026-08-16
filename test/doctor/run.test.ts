@@ -29,6 +29,8 @@ const deps = (overrides: Partial<DoctorDeps> = {}): DoctorDeps => ({
   readListenHosts: async () => ["127.0.0.1"],
   modelCall: async () => ({ raw: '{"action":"clarify","question":"ok"}', latencyMs: 900 }),
   routerModel: "claude-opus-5",
+  sessionModel: "claude-opus-5",
+  sessionEffort: "high",
   sleep: async () => {},
   spawn: true,
   ...overrides,

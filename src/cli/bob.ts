@@ -139,6 +139,8 @@ program
         readListenHosts,
         modelCall: claudeCliCall,
         routerModel: config.router_model,
+        sessionModel: config.session_model,
+        sessionEffort: config.session_effort,
         spawn: options.quick !== true,
       });
 

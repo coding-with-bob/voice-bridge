@@ -97,6 +97,10 @@ export interface ExecuteDeps {
   /** The C6 text, injected into every session this router spawns. */
   conventionText: string;
   permissionMode: string;
+  /** C3 `session_model` — stated on the launch so a session never inherits the machine's default. */
+  sessionModel: string;
+  /** C3 `session_effort`, for the same reason. */
+  sessionEffort: string;
 }
 
 export interface ExecutionOutcome {
@@ -125,6 +129,8 @@ export async function executeDecision(
       const { id } = await deps.client.createSession({
         workspace: decision.cwd,
         permissionMode: deps.permissionMode,
+        model: deps.sessionModel,
+        effort: deps.sessionEffort,
         appendSystemPrompt: deps.conventionText,
       });
       await deps.client.postMessage(id, routedMessage(id, decision.request));

@@ -113,6 +113,16 @@ describe("loadConfig — malformed config is a hard, explained error", () => {
     expectConfigError(() => loadConfig({ homeDir: dir }), "followup_window_min");
   });
 
+  /**
+   * A bad effort level has to fail here rather than at spawn. `claude --effort nonsense`
+   * fails inside a terminal nobody is watching, which looks exactly like the pool being
+   * healthy and every session dying — the failure mode this whole area already cost a day to.
+   */
+  test("an effort level Claude Code does not have", () => {
+    write("session_effort: enthusiastic\n");
+    expectConfigError(() => loadConfig({ homeDir: dir }), "session_effort");
+  });
+
   test("a speech speed outside what the ElevenLabs API supports", () => {
     write("elevenlabs_speed: 1.5\n");
     expectConfigError(() => loadConfig({ homeDir: dir }), "elevenlabs_speed");

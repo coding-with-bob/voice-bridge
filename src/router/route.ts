@@ -113,6 +113,8 @@ async function routeUnderLock(
         client: deps.client,
         conventionText: deps.conventionText,
         permissionMode: PERMISSION_MODE,
+        sessionModel: deps.config.session_model,
+        sessionEffort: deps.config.session_effort,
       });
       executed = outcome.executed;
       targetSessionId = outcome.targetSessionId;

@@ -73,6 +73,8 @@ describe.if(serverIsUp)("C4 against the live server — session lifecycle", () =
       const { id } = await client.createSession({
         workspace: "/tmp",
         permissionMode: "bypassPermissions",
+        model: "claude-opus-5",
+        effort: "high",
         title: "bob-c4-integration",
       });
       createdSessions.push(id);

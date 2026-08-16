@@ -51,6 +51,14 @@ export interface CreateSessionOptions {
   workspace: string;
   /** Passed through as `--permission-mode`; own-tool sessions run `bypassPermissions` per D10. */
   permissionMode: string;
+  /**
+   * Passed through as `--model`. Required rather than optional: omitting the flag hands the
+   * choice to `~/.claude/settings.json`, and a caller that forgets gets whatever the owner
+   * last set for their own terminal. Making it unforgettable is the point.
+   */
+  model: string;
+  /** Passed through as `--effort`, and required for the same reason. */
+  effort: string;
   /** The C6 convention text, injected as `--append-system-prompt`. */
   appendSystemPrompt?: string;
   title?: string;
@@ -96,7 +104,14 @@ export class OmnigentClient {
   async createSession(options: CreateSessionOptions): Promise<{ id: string }> {
     const [agent, host] = await Promise.all([this.claudeNativeAgent(), this.onlineHost()]);
 
-    const launchArgs = ["--permission-mode", options.permissionMode];
+    const launchArgs = [
+      "--permission-mode",
+      options.permissionMode,
+      "--model",
+      options.model,
+      "--effort",
+      options.effort,
+    ];
     if (options.appendSystemPrompt !== undefined) {
       launchArgs.push("--append-system-prompt", options.appendSystemPrompt);
     }

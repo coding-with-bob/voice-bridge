@@ -85,6 +85,8 @@ describe("createSession", () => {
     const created = await client.createSession({
       workspace: "/Users/felho/dev/confpipeline",
       permissionMode: "bypassPermissions",
+      model: "claude-opus-5",
+      effort: "high",
     });
 
     expect(created.id).toBe("conv_new");
@@ -96,13 +98,28 @@ describe("createSession", () => {
     });
   });
 
-  test("carries the permission mode through terminal_launch_args", async () => {
+  /**
+   * The model is stated on every launch, never left to the machine. Claude Code falls back
+   * to whatever `~/.claude/settings.json` holds, so without this a session runs on whichever
+   * model the owner last picked for their own terminal — observed 2026-08-16, when voice
+   * sessions had quietly drifted onto Fable 5.
+   */
+  test("states the permission mode, the model and the effort on every launch", async () => {
     const { client, calls } = stubClient(routes);
-    await client.createSession({ workspace: "/tmp", permissionMode: "bypassPermissions" });
+    await client.createSession({
+      workspace: "/tmp",
+      permissionMode: "bypassPermissions",
+      model: "claude-opus-5",
+      effort: "high",
+    });
     const post = calls.find((call) => call.method === "POST")!;
     expect((post.body as { terminal_launch_args: string[] }).terminal_launch_args).toEqual([
       "--permission-mode",
       "bypassPermissions",
+      "--model",
+      "claude-opus-5",
+      "--effort",
+      "high",
     ]);
   });
 
@@ -111,12 +128,18 @@ describe("createSession", () => {
     await client.createSession({
       workspace: "/tmp",
       permissionMode: "bypassPermissions",
+      model: "claude-opus-5",
+      effort: "high",
       appendSystemPrompt: "speak on finish",
     });
     const post = calls.find((call) => call.method === "POST")!;
     expect((post.body as { terminal_launch_args: string[] }).terminal_launch_args).toEqual([
       "--permission-mode",
       "bypassPermissions",
+      "--model",
+      "claude-opus-5",
+      "--effort",
+      "high",
       "--append-system-prompt",
       "speak on finish",
     ]);
@@ -127,16 +150,16 @@ describe("createSession", () => {
       ...routes,
       "/v1/hosts": { hosts: [{ host_id: "h", status: "offline" }] },
     });
-    await expect(client.createSession({ workspace: "/tmp", permissionMode: "x" })).rejects.toThrow(
-      /host/i,
-    );
+    await expect(
+      client.createSession({ workspace: "/tmp", permissionMode: "x", model: "m", effort: "high" }),
+    ).rejects.toThrow(/host/i);
   });
 
   test("refuses when the claude-native agent is missing", async () => {
     const { client } = stubClient({ ...routes, "/v1/agents": { data: [agents.data[0]] } });
-    await expect(client.createSession({ workspace: "/tmp", permissionMode: "x" })).rejects.toThrow(
-      /claude-native/,
-    );
+    await expect(
+      client.createSession({ workspace: "/tmp", permissionMode: "x", model: "m", effort: "high" }),
+    ).rejects.toThrow(/claude-native/);
   });
 });
 

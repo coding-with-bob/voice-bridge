@@ -32,6 +32,19 @@ export const BobConfigSchema = z.strictObject({
   omnigent_url: z.url(),
   /** Router decision model. Starts at a capable tier; downscaling is a later, evidence-based call. */
   router_model: z.string().min(1),
+  /**
+   * The model every spawned session runs on, stated on the launch rather than inherited.
+   * Without `--model` Claude Code falls back to `~/.claude/settings.json`, so the owner
+   * changing their own terminal default silently changes the voice bridge too — observed
+   * 2026-08-16, when spawned sessions had drifted onto Fable 5 with nothing to show it.
+   */
+  session_model: z.string().min(1),
+  /**
+   * Effort for spawned sessions. A closed set, so a typo is a config error here rather than
+   * a session that starts, fails inside a terminal nobody is watching, and leaves the pool
+   * looking healthy.
+   */
+  session_effort: z.enum(["low", "medium", "high", "xhigh", "max"]),
   /** The canned sentence spoken by the C5 deterministic fallback. Runtime language is the owner's. */
   clarify_fallback_text: z.string().min(1),
 });
@@ -45,5 +58,7 @@ export const DEFAULT_CONFIG: Omit<BobConfig, "home_dir"> = {
   elevenlabs_speed: 1.0,
   omnigent_url: "http://127.0.0.1:6767",
   router_model: "claude-opus-5",
+  session_model: "claude-opus-5",
+  session_effort: "high",
   clarify_fallback_text: "Nem értettem, hova tartozik ez. Mondanád másképp?",
 };

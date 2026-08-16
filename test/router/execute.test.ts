@@ -182,6 +182,8 @@ describe("executeDecision", () => {
     client,
     conventionText: "speak on finish",
     permissionMode: "bypassPermissions",
+    sessionModel: "claude-opus-5",
+    sessionEffort: "high",
   });
 
   test("continue carries the voice marker too", async () => {
@@ -208,6 +210,10 @@ describe("executeDecision", () => {
       workspace: "/Users/felho/dev/craft",
       permissionMode: "bypassPermissions",
       appendSystemPrompt: "speak on finish",
+      // Carried from config rather than left to the machine: a session must never inherit
+      // whichever model the owner last set for their own terminal.
+      model: "claude-opus-5",
+      effort: "high",
     });
   });
 
