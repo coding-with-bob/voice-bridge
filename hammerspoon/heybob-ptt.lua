@@ -17,6 +17,7 @@
 local PTT_CHORD = { fn = true, ctrl = true, alt = true }
 local MAX_SECONDS = 120 -- runaway protection: a held chord is not a stuck one
 local MIN_SECONDS = 0.25 -- below this it was a fat-finger, not an utterance
+local KILL_GRACE = 2 -- seconds a recorder may outlive its SIGINT before SIGKILL
 
 local HOME = os.getenv("HOME")
 local FFMPEG = "/opt/homebrew/bin/ffmpeg"
@@ -28,6 +29,7 @@ local cancelled = false
 local startedAt = 0
 local alertId = nil
 local watchdog = nil
+local killTimer = nil -- module-local on purpose: a timer held only by a closure gets GC'd
 
 local function notify(text)
   hs.notify.new({ title = "Hey Bob", informativeText = text }):send()
@@ -58,10 +60,31 @@ end
 local function onRecorderExit()
   local wasCancelled = cancelled
   recorder = nil
+  if killTimer then
+    killTimer:stop()
+    killTimer = nil
+  end
   stopUi()
   if wasCancelled then return end
   if hs.timer.secondsSinceEpoch() - startedAt < MIN_SECONDS then return end
   dispatch()
+end
+
+local function stopRecording(cancel)
+  if not recorder then return end
+  cancelled = cancel
+  local task = recorder
+  task:interrupt() -- SIGINT: ffmpeg finalises the wav header, then onRecorderExit fires
+  -- An ffmpeg wedged opening its input device ignores SIGINT (its graceful handler never
+  -- runs while blocked in CoreAudio), which would leave `recorder` set forever — and the
+  -- Esc tap swallows every Esc on the machine for as long as it is. Escalate to SIGKILL;
+  -- onRecorderExit fires on a killed task too, so the state always unwinds.
+  killTimer = hs.timer.doAfter(KILL_GRACE, function()
+    killTimer = nil
+    if recorder == task and task:isRunning() then
+      hs.execute("/bin/kill -9 " .. tostring(task:pid()))
+    end
+  end)
 end
 
 local function startRecording()
@@ -87,14 +110,8 @@ local function startRecording()
   -- Runtime language is the owner's (the clarify_fallback_text precedent).
   alertId = hs.alert.show("🎙️ Bob figyel…", MAX_SECONDS)
   watchdog = hs.timer.doAfter(MAX_SECONDS, function()
-    if recorder then recorder:interrupt() end -- treated as a release, not an error
+    stopRecording(false) -- treated as a release, not an error
   end)
-end
-
-local function stopRecording(cancel)
-  if not recorder then return end
-  cancelled = cancel
-  recorder:interrupt() -- SIGINT: ffmpeg finalises the wav header, then onRecorderExit fires
 end
 
 local escCode = hs.keycodes.map.escape

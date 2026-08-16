@@ -41,6 +41,10 @@ cost nothing — recording follows the chord, not the sound.
 - **Releases under 0.25 s** are dropped as fat-fingers.
 - **120 s cap** as runaway protection — a held key is not a stuck key; hitting the cap
   dispatches what was recorded rather than erroring.
+- **A recorder that ignores its stop signal is force-killed after 2 s.** ffmpeg can block
+  forever opening an input device that just went away (observed 2026-08-16), and while a
+  recording is "live" the Esc tap swallows every Esc on the machine — so a stuck take must
+  never outlive its stop by more than the grace period.
 - The last recording is kept at `~/bob/state/ptt-last.wav` until the next press — it is the
   debug artifact when a transcription looks wrong (`bob dictate --stt-only` replays it).
 
