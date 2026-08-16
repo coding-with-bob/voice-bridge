@@ -59,7 +59,13 @@ pick a voice id, and set `default_voice: "elevenlabs:<id>"` in `~/bob/defaults.y
 
 ### 4. Entry
 
-See [`raycast/README.md`](raycast/README.md): add the script directory, assign a hotkey, done.
+Two entries, one pipeline:
+
+- **Push-to-talk (the everyday one):** [`hammerspoon/README.md`](hammerspoon/README.md) —
+  hold F13, speak, release. Hammerspoon records while the key is down and hands the wav to
+  `bob dictate`.
+- **Typed / fallback:** [`raycast/README.md`](raycast/README.md) — the Raycast script command
+  with Monologue dictation; add the script directory, assign a hotkey, done.
 
 ### 5. Check it
 

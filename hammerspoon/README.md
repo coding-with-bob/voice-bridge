@@ -1,0 +1,64 @@
+# Entry: Hammerspoon push-to-talk (PTT v2)
+
+The one-gesture voice entry: **hold F13, speak, release.** Hammerspoon records while the key
+is down and hands the finished wav to `bob dictate`, which transcribes it with ElevenLabs
+Scribe and runs the same route pipeline the Raycast entry uses. Esc while holding cancels.
+
+This exists because the Raycast+Monologue entry is a four-step gesture, and because the two
+alternatives fail for a specific reason: a Raycast extension cannot see a key release at all,
+and silence auto-stop cuts exactly where a non-native speaker pauses to think. Under a held
+key, pauses are free. (The full research is in bob-jarvis:
+`design/voice-bridge-implementation-plan.md` §5.)
+
+## Install
+
+1. `brew install --cask hammerspoon` and `brew install ffmpeg` (both already present if this
+   machine ran the setup once).
+2. Symlink the module and require it:
+   ```bash
+   mkdir -p ~/.hammerspoon
+   ln -sf ~/dev/hey-bob/hammerspoon/heybob-ptt.lua ~/.hammerspoon/heybob-ptt.lua
+   grep -q heybob-ptt ~/.hammerspoon/init.lua 2>/dev/null || echo 'require("heybob-ptt")' >> ~/.hammerspoon/init.lua
+   ```
+3. Launch Hammerspoon and grant the two permissions it asks for, both one-time:
+   **Accessibility** (the event tap that sees the key) and **Microphone** (the ffmpeg it
+   spawns records under Hammerspoon's identity). Enable *Launch Hammerspoon at login* in its
+   preferences.
+4. The ElevenLabs key in the Keychain must carry the **speech_to_text** permission — a scoped
+   key minted for TTS alone gets a loud 401 naming exactly this. Fix it in the ElevenLabs
+   dashboard (API Keys → edit → enable Speech to Text), no code change needed.
+
+## The flow
+
+**Hold → speak → release.** Nothing opens and nothing needs closing: a small on-screen alert
+shows while the microphone is live, the router speaks its acknowledgement a few seconds after
+release, and the session speaks its answer when the work is done. Thinking pauses mid-utterance
+cost nothing — recording follows the key, not the sound.
+
+- **Esc while holding** cancels the recording; nothing is dispatched.
+- **Releases under 0.25 s** are dropped as fat-fingers.
+- **120 s cap** as runaway protection — a held key is not a stuck key; hitting the cap
+  dispatches what was recorded rather than erroring.
+- The last recording is kept at `~/bob/state/ptt-last.wav` until the next press — it is the
+  debug artifact when a transcription looks wrong (`bob dictate --stt-only` replays it).
+
+## Configuration
+
+Top of `heybob-ptt.lua`: `PTT_KEY` (any `hs.keycodes.map` name — pick a key the frontmost app
+never needs; the tap swallows it), `MAX_SECONDS`, `MIN_SECONDS`. The recording device is the
+system default input (`:default`), so switching microphones needs no config here. After any
+edit: Hammerspoon menu → *Reload Config*.
+
+## When it goes wrong
+
+Same contract as the Raycast entry: success is silent (you heard the acknowledgement), silence
+is a non-event, and a failure raises a macOS notification with the reason — a 401 names the
+key permission, "no audio" names the microphone grant, a routing error is `bob doctor`'s
+department. `bob log` shows the decision that was (or was not) made.
+
+## The environment trap, again
+
+Hammerspoon launches tasks with a minimal environment, exactly like Raycast and launchd — the
+launcher owns the environment, not the machine. So `heybob-ptt.lua` uses absolute paths only,
+and `heybob-ptt.sh` exports the same explicit PATH as `raycast/heybob.sh`, for the same
+reasons documented there (including `llmp claude` and `/usr/sbin` for `lsof`).
