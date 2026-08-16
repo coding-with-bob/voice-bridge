@@ -99,6 +99,131 @@ describe.if(serverIsUp)("C4 against the live server — session lifecycle", () =
 });
 
 /**
+ * The primitives the correction path is built on, against the real server.
+ *
+ * Everything the repair does was written from `server/API.md` and had never once been sent
+ * to Omnigent. That is the same position we were in twice on 2026-08-16 — a dead auth token
+ * that looked configured, and a schema shape the recipe taught wrongly — and both times the
+ * thing that looked healthy was the thing that was broken.
+ *
+ * The load-bearing one is `pending_id`. Without it the repair can never prove that the
+ * running turn is its own, so it takes the conservative branch every time and silently
+ * stops interrupting anything. Nothing about that failure is visible from the outside.
+ */
+describe.if(serverIsUp)("C4 against the live server — the repair primitives", () => {
+  /** Long enough to still be generating while the next assertion runs. */
+  const SLOW_TASK = "Without using any tools, write out the numbers 1 to 300, one per line.";
+
+  async function freshSession(title: string): Promise<string> {
+    const { id } = await client.createSession({
+      workspace: "/tmp",
+      permissionMode: "bypassPermissions",
+      model: "claude-opus-5",
+      effort: "high",
+      title,
+    });
+    createdSessions.push(id);
+    return id;
+  }
+
+  test(
+    "a native message comes back with a pending_id — the repair's only proof of ownership",
+    async () => {
+      const id = await freshSession("bob-c4-pending-id");
+      const posted = await client.postMessage(id, "Reply with exactly the word: pong");
+      expect(
+        posted.pendingId,
+        "no pending_id: the repair can never prove the running turn is its own, " +
+          "so it will take the conservative branch forever and never interrupt",
+      ).toBeTruthy();
+    },
+    60_000,
+  );
+
+  test(
+    "a message sent behind a running turn is visible as an un-consumed input",
+    async () => {
+      const id = await freshSession("bob-c4-pending-inputs");
+      await client.postMessage(id, SLOW_TASK);
+      const second = await client.postMessage(id, "Reply with exactly the word: second");
+      expect(second.pendingId).toBeTruthy();
+
+      // "Was it ever observed queued" rather than "is it queued right now": the first turn
+      // ends on its own schedule, and the assertion must not race it.
+      const seen = await observedWithin(
+        20_000,
+        async () => (await client.sessionState(id)).pending_inputs,
+        (pending) => pending.includes(second.pendingId!),
+      );
+      expect(
+        seen,
+        "the second message was never seen in pending_inputs — the repair cannot tell " +
+          "a queued message from a running one, which is exactly what it must not do",
+      ).toBe(true);
+    },
+    90_000,
+  );
+
+  test(
+    "interrupt stops a running turn",
+    async () => {
+      const id = await freshSession("bob-c4-interrupt");
+      await client.postMessage(id, SLOW_TASK);
+      const started = await observedWithin(
+        20_000,
+        async () => (await client.sessionState(id)).status,
+        (status) => status === "running" || status === "waiting",
+      );
+      expect(started, "the session never started working, so there was nothing to interrupt").toBe(
+        true,
+      );
+
+      await client.interrupt(id);
+      const stopped = await observedWithin(
+        20_000,
+        async () => (await client.sessionState(id)).status,
+        (status) => status !== "running",
+      );
+      expect(stopped, "the session was still running after an interrupt").toBe(true);
+    },
+    90_000,
+  );
+
+  test(
+    "interrupt then delete leaves nothing behind — the wrongly-born-session repair, end to end",
+    async () => {
+      const id = await freshSession("bob-c4-interrupt-delete");
+      await client.postMessage(id, SLOW_TASK);
+      await client.interrupt(id);
+      await client.deleteSession(id);
+      await expect(client.sessionState(id)).rejects.toThrow(/404/);
+    },
+    90_000,
+  );
+
+  test("a fresh session's state parses, and starts with nothing queued", async () => {
+    const id = await freshSession("bob-c4-state-shape");
+    const state = await client.sessionState(id);
+    expect(["idle", "running", "waiting", "failed", "unknown"]).toContain(state.status);
+    expect(state.pending_inputs).toEqual([]);
+  });
+});
+
+/** Polls until the reading satisfies the predicate, or the deadline passes. */
+async function observedWithin<T>(
+  timeoutMs: number,
+  read: () => Promise<T>,
+  satisfied: (value: T) => boolean,
+): Promise<boolean> {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    if (satisfied(await read())) return true;
+    await new Promise((resolve) => setTimeout(resolve, 250));
+  }
+  return false;
+}
+
+/**
  * The timeout message carries what the next person will need.
  *
  * This test has been seen to fail intermittently and could not be reproduced on demand,
