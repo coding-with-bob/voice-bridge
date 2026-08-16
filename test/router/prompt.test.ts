@@ -43,6 +43,7 @@ describe("SYSTEM_PROMPT — the discipline is stated, not implied", () => {
 
   test("fixes the deliberation order", () => {
     const order = [
+      "CORRECTION",
       "FOLLOW-UP",
       "CONTENT MATCH",
       "PEEK",
@@ -102,6 +103,18 @@ describe("SYSTEM_PROMPT — the discipline is stated, not implied", () => {
     expect(SYSTEM_PROMPT).toContain("New session: craft.");
     expect(SYSTEM_PROMPT).toContain("Sent to the subtitle session.");
     expect(SYSTEM_PROMPT).toContain('Keep the word "session" untranslated');
+  });
+
+  /**
+   * A correction has the form of a follow-up and the opposite meaning: it says the last
+   * address was wrong. Deliberated before FOLLOW-UP, or the fix is delivered to the very
+   * session that received the mistake.
+   */
+  test("a correction is considered before anything can swallow it as a follow-up", () => {
+    expect(SYSTEM_PROMPT.indexOf("CORRECTION")).toBeLessThan(SYSTEM_PROMPT.indexOf("FOLLOW-UP"));
+    expect(SYSTEM_PROMPT).toContain("A correction is never a follow-up");
+    expect(SYSTEM_PROMPT).toContain('"corrects_previous":true');
+    expect(SYSTEM_PROMPT).toContain('{"action":"undo"}');
   });
 
   /**

@@ -81,12 +81,18 @@ function harness(options: {
   const deps: RouteDeps = {
     client: {
       listSessions: async () => options.sessions,
-      postMessage: async (id: string, text: string) => void messages.push({ id, text }),
+      postMessage: async (id: string, text: string) => {
+        messages.push({ id, text });
+        return { pendingId: null };
+      },
       createSession: async (_options: CreateSessionOptions) => ({ id: "conv_fresh" }),
       sessionItems: async (id: string) => {
         itemRequests.push(id);
         return options.items?.[id] ?? [];
       },
+      interrupt: async () => {},
+      deleteSession: async () => {},
+      sessionState: async () => ({ status: "idle" as const, pending_inputs: [] }),
     },
     config: { ...DEFAULT_CONFIG, home_dir: home },
     paths: pathsFor(home),

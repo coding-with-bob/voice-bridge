@@ -78,6 +78,8 @@ export function checkExecutable(
       return { ok: true };
     }
     case "clarify":
+    // The repair is fenced by its own invariant; there is no address here to check.
+    case "undo":
       return { ok: true };
     case "lookup_ledger":
       // The reach-back mechanism arrives in M4; until then an honest fallback beats a
@@ -120,6 +122,8 @@ export interface ExecutionOutcome {
   /** The session the utterance actually reached; null when nothing was dispatched. */
   targetSessionId: string | null;
   executed: boolean;
+  /** The server's handle on this message, when it gave one. A correction reads it back. */
+  pendingId: string | null;
 }
 
 export async function executeDecision(
@@ -127,16 +131,21 @@ export async function executeDecision(
   deps: ExecuteDeps,
 ): Promise<ExecutionOutcome> {
   switch (decision.action) {
-    case "continue":
+    case "continue": {
       // Reviving a stopped session is free: the message itself relaunches it. The voice
       // marker rides along — without it the session cannot tell a spoken request from a
       // typed one, and answers the wrong medium (observed on first real use: a voice
       // question answered in markdown, in silence).
-      await deps.client.postMessage(
+      const posted = await deps.client.postMessage(
         decision.session_id,
         routedMessage(decision.session_id, decision.request),
       );
-      return { targetSessionId: decision.session_id, executed: true };
+      return {
+        targetSessionId: decision.session_id,
+        executed: true,
+        pendingId: posted.pendingId,
+      };
+    }
 
     case "new": {
       const { id } = await deps.client.createSession({
@@ -147,12 +156,14 @@ export async function executeDecision(
         effort: decision.effort ?? deps.sessionEffort,
         appendSystemPrompt: deps.conventionText,
       });
-      await deps.client.postMessage(id, routedMessage(id, decision.request));
-      return { targetSessionId: id, executed: true };
+      const posted = await deps.client.postMessage(id, routedMessage(id, decision.request));
+      return { targetSessionId: id, executed: true, pendingId: posted.pendingId };
     }
 
     case "clarify":
     case "lookup_ledger":
-      return { targetSessionId: null, executed: false };
+    // An undo has already done its work in the repair step; there is nothing to dispatch.
+    case "undo":
+      return { targetSessionId: null, executed: false, pendingId: null };
   }
 }

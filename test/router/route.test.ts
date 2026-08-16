@@ -49,12 +49,18 @@ function harness(overrides: Partial<RouteDeps> = {}) {
   const deps: RouteDeps = {
     client: {
       listSessions: async () => [session({ id: "s1" })],
-      postMessage: async (id: string, text: string) => void messages.push({ id, text }),
+      postMessage: async (id: string, text: string) => {
+        messages.push({ id, text });
+        return { pendingId: null };
+      },
       createSession: async (options: CreateSessionOptions) => {
         created.push(options);
         return { id: "conv_fresh" };
       },
       sessionItems: async () => [],
+      interrupt: async () => {},
+      deleteSession: async () => {},
+      sessionState: async () => ({ status: "idle" as const, pending_inputs: [] }),
     },
     config: { ...DEFAULT_CONFIG, home_dir: home },
     paths: pathsFor(home),
@@ -233,6 +239,9 @@ describe("route — the deterministic fallback", () => {
         },
         createSession: async () => ({ id: "conv_fresh" }),
         sessionItems: async () => [],
+        interrupt: async () => {},
+        deleteSession: async () => {},
+        sessionState: async () => ({ status: "idle" as const, pending_inputs: [] }),
       },
     });
     await expectFallback(deps, spoken, "dispatch failed");
@@ -260,9 +269,12 @@ describe("route — hard failures stay hard", () => {
         listSessions: async () => {
           throw new Error("ECONNREFUSED");
         },
-        postMessage: async () => {},
+        postMessage: async () => ({ pendingId: null }),
         createSession: async () => ({ id: "x" }),
         sessionItems: async () => [],
+        interrupt: async () => {},
+        deleteSession: async () => {},
+        sessionState: async () => ({ status: "idle" as const, pending_inputs: [] }),
       },
     });
     await expect(route("do the thing", deps)).rejects.toThrow(RouteError);

@@ -23,6 +23,7 @@ import { pathsFor } from "../../src/config/load.ts";
 import { DEFAULT_CONFIG } from "../../src/contracts/config.ts";
 import type { PoolSession } from "../../src/omnigent/parse.ts";
 import type { SpokenLogEntry } from "../../src/contracts/spoken-log.ts";
+import type { DecisionLogEntry } from "../../src/contracts/decision.ts";
 import type { CreateSessionOptions } from "../../src/omnigent/client.ts";
 
 /** Real directories, so a placement decision survives the executability check. */
@@ -39,12 +40,16 @@ export interface RoutingExpectation {
   model?: string;
   /** Words the request must not still carry: naming a model is not part of the work. */
   requestExcludes?: string[];
+  /** The decision undoes the previous dispatch before doing anything of its own. */
+  corrects?: boolean;
 }
 
 export interface RoutingCase {
   name: string;
   sessions: PoolSession[];
   spoken?: SpokenLogEntry[];
+  /** Prior dispatches, so a row can be about correcting one of them. */
+  decisions?: DecisionLogEntry[];
   utterance: string;
   /** Scripted model answers for mocked mode, consumed one per round. */
   scripted: unknown[];
@@ -189,6 +194,46 @@ export const ROUTING_TABLE: RoutingCase[] = [
     },
   },
   {
+    // A correction has the *form* of a follow-up and the opposite meaning. Untreated, the fix
+    // is delivered to the session that received the mistake — which is why CORRECTION is the
+    // first thing the recipe considers, ahead of FOLLOW-UP.
+    name: "a correction is not a follow-up — it goes where the mistake should have gone",
+    sessions: [subtitleSession, invoiceSession],
+    spoken: [spoke("sess-subtitles", "The subtitle timing is fixed.", minutesAgo(3))],
+    decisions: [
+      {
+        ts: new Date(minutesAgo(2) * 1000).toISOString(),
+        utterance: "did the invoice export include the November numbers?",
+        context_digest: "2 candidates",
+        decision: {
+          action: "continue",
+          session_id: "sess-subtitles",
+          request: "did the invoice export include the November numbers?",
+          ack: "Beküldve a subtitle sessionnek.",
+        },
+        latency_ms: 1200,
+        model: "claude-opus-5",
+        target_session_id: "sess-subtitles",
+        executed: true,
+        pending_id: "pending_mistake",
+        reachback: false,
+        peeked: false,
+        fallback: false,
+      },
+    ],
+    utterance: "nem, ez rossz volt, ez az invoice exportos sessionbe tartozott",
+    scripted: [
+      {
+        action: "continue",
+        session_id: "sess-invoices",
+        request: "did the invoice export include the November numbers?",
+        ack: "Visszavonva, beküldve az invoice export sessionnek.",
+        corrects_previous: true,
+      },
+    ],
+    expect: { action: "continue", session_id: "sess-invoices", corrects: true },
+  },
+  {
     name: "a request belonging to no project is born at home",
     sessions: [],
     utterance: "what is on my calendar for tomorrow?",
@@ -299,6 +344,7 @@ export async function runCase(
   const home = mkdtempSync(join(tmpdir(), "bob-table-"));
   try {
     seedLedger(home, testCase.spoken ?? []);
+    seedDecisions(home, testCase.decisions ?? []);
 
     const created: CreateSessionOptions[] = [];
     const messages: Array<{ id: string; text: string }> = [];
@@ -307,7 +353,10 @@ export async function runCase(
     const deps: RouteDeps = {
       client: {
         listSessions: async () => testCase.sessions,
-        postMessage: async (id: string, text: string) => void messages.push({ id, text }),
+        postMessage: async (id: string, text: string) => {
+          messages.push({ id, text });
+          return { pendingId: null };
+        },
         createSession: async (createOptions: CreateSessionOptions) => {
           created.push(createOptions);
           return { id: "conv_created" };
@@ -323,6 +372,9 @@ export async function runCase(
               text: entry.text,
               created_at: index,
             })),
+        interrupt: async () => {},
+        deleteSession: async () => {},
+        sessionState: async () => ({ status: "idle" as const, pending_inputs: [] }),
       },
       config: { ...DEFAULT_CONFIG, home_dir: home },
       paths: pathsFor(home),
@@ -352,6 +404,14 @@ export async function runCase(
 /** `HOME_DIR` in a row's expectation stands for the throwaway home of that run. */
 export function resolveExpectedCwd(expected: string, homeDir: string): string {
   return expected === "HOME_DIR" ? homeDir : expected;
+}
+
+/** The decision log lives at one path; a row that seeds none leaves the file absent. */
+function seedDecisions(home: string, entries: DecisionLogEntry[]): void {
+  if (entries.length === 0) return;
+  const path = pathsFor(home).decisionLog;
+  mkdirSync(join(home, "logs"), { recursive: true });
+  writeFileSync(path, `${entries.map((entry) => JSON.stringify(entry)).join("\n")}\n`, "utf8");
 }
 
 function seedLedger(home: string, entries: SpokenLogEntry[]): void {

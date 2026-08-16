@@ -203,7 +203,10 @@ describe("executeDecision", () => {
       messages,
       created,
       client: {
-        postMessage: async (id: string, text: string) => void messages.push({ id, text }),
+        postMessage: async (id: string, text: string) => {
+          messages.push({ id, text });
+          return { pendingId: `pending_${messages.length}` };
+        },
         createSession: async (options: CreateSessionOptions) => {
           created.push(options);
           return { id: "conv_fresh" };
@@ -231,7 +234,7 @@ describe("executeDecision", () => {
       { id: "s1", text: `${metadataBlock("s1")}\n\nadd the test` },
     ]);
     expect(stub.messages[0]!.text.match(/\[bob metadata/g)).toHaveLength(1);
-    expect(outcome).toEqual({ targetSessionId: "s1", executed: true });
+    expect(outcome).toEqual({ targetSessionId: "s1", executed: true, pendingId: "pending_1" });
   });
 
   test("new creates in the chosen workspace with the C6 convention injected", async () => {
@@ -303,7 +306,7 @@ describe("executeDecision", () => {
     const outcome = await executeDecision({ action: "clarify", question: "which?" }, deps(stub.client));
     expect(stub.messages).toEqual([]);
     expect(stub.created).toEqual([]);
-    expect(outcome).toEqual({ targetSessionId: null, executed: false });
+    expect(outcome).toEqual({ targetSessionId: null, executed: false, pendingId: null });
   });
 });
 

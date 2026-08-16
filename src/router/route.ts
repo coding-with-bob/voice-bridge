@@ -14,7 +14,7 @@ import { join } from "node:path";
 import type { BobPaths } from "../config/load.ts";
 import type { BobConfig } from "../contracts/config.ts";
 import type { RouterDecision, DecisionLogEntry } from "../contracts/decision.ts";
-import { parseRouterDecision } from "../contracts/decision.ts";
+import { candidatesOf, isCorrection, parseRouterDecision } from "../contracts/decision.ts";
 import type { OmnigentClient } from "../omnigent/client.ts";
 import type { PoolSession } from "../omnigent/parse.ts";
 import { acquireLock, type LockOptions } from "../say/lock.ts";
@@ -28,6 +28,13 @@ import { appendDecisionEntry, dispatchEvents, readDecisionEntries } from "./deci
 import { checkExecutable, executeDecision, normalizeDecision } from "./execute.ts";
 import { grepSpokenLedger, readSpokenEntries } from "./ledger.ts";
 import { fetchPeekExtracts, PEEK_CANDIDATE_LIMIT } from "./peek.ts";
+import {
+  DISREGARD_TEXT,
+  repairPrevious,
+  UNWITHDRAWN,
+  WITHDRAWN,
+  type RepairResult,
+} from "./repair.ts";
 import { extractJson, type ModelCall } from "./model.ts";
 import { buildUserPrompt, SYSTEM_PROMPT } from "./prompt.ts";
 
@@ -46,7 +53,13 @@ export class RouteError extends Error {
 export interface RouteDeps {
   client: Pick<
     OmnigentClient,
-    "listSessions" | "postMessage" | "createSession" | "sessionItems"
+    | "listSessions"
+    | "postMessage"
+    | "createSession"
+    | "sessionItems"
+    | "interrupt"
+    | "deleteSession"
+    | "sessionState"
   >;
   config: BobConfig;
   paths: BobPaths;
@@ -97,7 +110,7 @@ async function routeUnderLock(
   deps: RouteDeps,
   now: () => Date,
 ): Promise<RouteResult> {
-  const { context: baseContext, sessions } = await gatherContext(deps, now());
+  const { context: baseContext, sessions, decisions } = await gatherContext(deps, now());
   const attempt = await decide(utterance, baseContext, sessions, deps, now());
   const context = attempt.context;
 
@@ -106,9 +119,21 @@ async function routeUnderLock(
   let fallbackReason = attempt.fallbackReason;
   let executed = false;
   let targetSessionId: string | null = null;
+  let pendingId: string | null = null;
+  let repair: RepairResult | null = null;
 
   if (!fallback && deps.dryRun !== true) {
     try {
+      // The repair runs first and on its own: undoing the mistake must not depend on the
+      // re-route succeeding, and the person asked for the undo either way.
+      if (isCorrection(decision)) {
+        repair = await repairPrevious(lastDispatch(decisions), decisions, {
+          client: deps.client,
+          windowMs: deps.config.correction_window_min * 60_000,
+          now,
+          disregardText: DISREGARD_TEXT,
+        });
+      }
       const outcome = await executeDecision(decision, {
         client: deps.client,
         conventionText: deps.conventionText,
@@ -118,6 +143,7 @@ async function routeUnderLock(
       });
       executed = outcome.executed;
       targetSessionId = outcome.targetSessionId;
+      pendingId = outcome.pendingId;
     } catch (error) {
       // The decision was sound; delivering it was not. Same fallback, honest reason.
       decision = fallbackDecision(deps.config);
@@ -126,7 +152,7 @@ async function routeUnderLock(
     }
   }
 
-  const spoken = spokenTextOf(decision);
+  const spoken = spokenWithRepair(spokenTextOf(decision), repair, deps.config);
   const reach = describeReachback(decision, targetSessionId, attempt, deps);
 
   const entry: DecisionLogEntry = {
@@ -138,6 +164,10 @@ async function routeUnderLock(
     model: deps.config.router_model,
     target_session_id: targetSessionId,
     executed,
+    pending_id: pendingId,
+    ...(repair === null
+      ? {}
+      : { correction: { of_session_id: repair.sessionId, outcome: repair.outcome } }),
     reachback: reach.reachback,
     ...(reach.reason === undefined ? {} : { reachback_reason: reach.reason }),
     peeked: attempt.peeked,
@@ -175,7 +205,7 @@ async function routeUnderLock(
 async function gatherContext(
   deps: RouteDeps,
   now: Date,
-): Promise<{ context: RoutingContext; sessions: PoolSession[] }> {
+): Promise<{ context: RoutingContext; sessions: PoolSession[]; decisions: DecisionLogEntry[] }> {
   let sessions: PoolSession[];
   try {
     sessions = await deps.client.listSessions();
@@ -197,6 +227,7 @@ async function gatherContext(
   // candidate window has deliberately hidden.
   return {
     sessions,
+    decisions,
     context: buildContext({
       sessions,
       spoken,
@@ -287,9 +318,10 @@ async function decide(
       continue;
     }
 
-    if (!peeked && (decision.candidates?.length ?? 0) >= PEEK_CANDIDATE_LIMIT) {
+    const candidates = candidatesOf(decision);
+    if (!peeked && candidates.length >= PEEK_CANDIDATE_LIMIT) {
       peeked = true;
-      const shortlist = decision.candidates!.map((candidate) => candidate.session_id);
+      const shortlist = candidates.map((candidate) => candidate.session_id);
       context = { ...context, peeks: await fetchPeekExtracts(deps.client, shortlist) };
       continue;
     }
@@ -364,6 +396,29 @@ function fallbackDecision(config: BobConfig): RouterDecision {
   return { action: "clarify", question: config.clarify_fallback_text };
 }
 
+/** The most recent dispatch that actually reached a session — the only thing a correction undoes. */
+function lastDispatch(decisions: DecisionLogEntry[]): DecisionLogEntry | null {
+  for (let index = decisions.length - 1; index >= 0; index -= 1) {
+    const entry = decisions[index]!;
+    if (entry.executed && entry.target_session_id !== null) return entry;
+  }
+  return null;
+}
+
+/**
+ * The router writes its ack before the repair has run, so it cannot know whether the undo
+ * worked — which is why the recipe forbids it from claiming one. The outcome is appended
+ * here, where it is known. An ack that says "undone" over a message still sitting in a
+ * queue is worse than the misroute it is reporting on.
+ */
+function spokenWithRepair(ack: string, repair: RepairResult | null, config: BobConfig): string {
+  if (repair === null) return ack;
+  if (WITHDRAWN.includes(repair.outcome)) return `${ack} ${config.correction_undone_text}`;
+  if (UNWITHDRAWN.includes(repair.outcome)) return `${ack} ${config.correction_blocked_text}`;
+  // nothing-to-undo: there was no previous dispatch. Saying so would be noise.
+  return ack;
+}
+
 function spokenTextOf(decision: RouterDecision): string {
   switch (decision.action) {
     case "continue":
@@ -371,6 +426,8 @@ function spokenTextOf(decision: RouterDecision): string {
       return decision.ack;
     case "clarify":
       return decision.question;
+    case "undo":
+      return decision.ack;
     case "lookup_ledger":
       // Unreachable: a lookup is either granted (and re-asked) or turned into the fallback.
       return decision.query;

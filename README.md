@@ -65,6 +65,16 @@ Spawned sessions run on `session_model` / `session_effort` from that file (`clau
 `high`), stated on every launch. Leaving them to Claude Code's own default would mean the model
 you last picked for your own terminal silently becomes the model the voice bridge thinks with.
 
+**Correcting a misroute.** If the ack names the wrong place, say so — *"nem, ez rossz volt, az
+invoice exportos sessionbe"*. The router treats that as a correction rather than a follow-up,
+undoes what it can, and re-routes. What "undo" means depends on what the mistake was: a session
+that exists only because of it is interrupted and deleted; a message that has started running is
+interrupted; a message still queued behind unrelated work is **not** interrupted, because that
+would cancel someone else's turn and let the mistake start next anyway. In that last case the
+session is told to disregard the message and the ack says it could not be pulled back. Deletion
+can only ever reach a session the immediately preceding decision itself created
+(`correction_window_min`). Design: [voice-correction-path](../bob-jarvis/design/voice-correction-path.md).
+
 A single request can override it out loud — *"in confpipeline, csináld Fable-lel: listázd a docs
 mappa fájljait"*. No prefix or keyword convention: the router picks the model out of ordinary
 speech, drops it from what the session is asked to do, and the ack says which model it used, so

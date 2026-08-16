@@ -54,6 +54,21 @@ export const BobConfigSchema = z.strictObject({
   session_models: z.array(z.string().min(1)).nonempty(),
   /** The canned sentence spoken by the C5 deterministic fallback. Runtime language is the owner's. */
   clarify_fallback_text: z.string().min(1),
+  /**
+   * How recently the mistake must have happened for its session to be deletable. Part of the
+   * fence around `DELETE`, not a convenience: outside it, a correction can still re-route,
+   * it just cannot destroy.
+   */
+  correction_window_min: z.number().positive(),
+  /**
+   * Spoken after a correction that could not be withdrawn — the message was queued behind
+   * work that has nothing to do with it, or ownership of the running turn could not be
+   * proven. Saying so beats interrupting the wrong thing. Owner's language, like the
+   * clarify fallback.
+   */
+  correction_blocked_text: z.string().min(1),
+  /** Spoken after a correction that did stop the mistake. The router cannot know this; the repair does. */
+  correction_undone_text: z.string().min(1),
 })
   /**
    * A default outside the offered list would be a config that contradicts itself: the
@@ -77,4 +92,7 @@ export const DEFAULT_CONFIG: Omit<BobConfig, "home_dir"> = {
   session_effort: "high",
   session_models: ["claude-opus-5", "claude-fable-5", "claude-sonnet-5"],
   clarify_fallback_text: "Nem értettem, hova tartozik ez. Mondanád másképp?",
+  correction_window_min: 10,
+  correction_blocked_text: "Ezt már nem tudtam visszavonni, csak szóltam a sessionnek.",
+  correction_undone_text: "Az előzőt visszavontam.",
 };

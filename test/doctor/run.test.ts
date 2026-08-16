@@ -13,7 +13,7 @@ function stubClient(overrides: Partial<Record<keyof StubClient, unknown>> = {}):
     listAgents: async () => [{ id: "ag", name: "claude-native-ui", harness: "claude-native" }],
     listSessions: async () => [] as PoolSession[],
     createSession: async () => ({ id: "conv_smoke" }),
-    postMessage: async () => {},
+    postMessage: async () => ({ pendingId: null }),
     sessionItems: async () => [{ id: "i", role: "assistant", text: "pong", created_at: 1 }],
     deleteSession: async () => {},
   };

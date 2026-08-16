@@ -12,8 +12,10 @@
  */
 import {
   parseSessionList,
+  parseSessionState,
   parseTextItems,
   type PoolSession,
+  type SessionState,
   type TextItem,
 } from "./parse.ts";
 
@@ -131,11 +133,48 @@ export class OmnigentClient {
     return { id };
   }
 
-  async postMessage(sessionId: string, text: string): Promise<void> {
+  /**
+   * Returns the `pending_id` the server mints for a native-terminal message, when it gives
+   * one. It is the only handle on "has this message started yet": a message to a busy
+   * session queues, and the snapshot lists it under `pending_inputs` until consumption
+   * drains it. A correction needs that answer before it may interrupt anything.
+   */
+  async postMessage(sessionId: string, text: string): Promise<{ pendingId: string | null }> {
+    const payload = await this.request<{ pending_id?: unknown }>(
+      "POST",
+      `/v1/sessions/${encodeURIComponent(sessionId)}/events`,
+      {
+        type: "message",
+        data: { role: "user", content: [{ type: "input_text", text }] },
+      },
+    );
+    const pendingId = payload?.pending_id;
+    return { pendingId: typeof pendingId === "string" && pendingId !== "" ? pendingId : null };
+  }
+
+  /**
+   * Preempts the running turn. Deliberately dual-path server-side: it does not enter the
+   * queue, so it can cut ahead of items already waiting. It does **not** clear the queue —
+   * which is why a correction must know whether its own message is running before using it.
+   */
+  async interrupt(sessionId: string): Promise<void> {
     await this.request("POST", `/v1/sessions/${encodeURIComponent(sessionId)}/events`, {
-      type: "message",
-      data: { role: "user", content: [{ type: "input_text", text }] },
+      type: "interrupt",
+      data: {},
     });
+  }
+
+  /**
+   * Status plus the un-consumed inputs, which is all a correction needs. `include_items=false`
+   * skips the transcript read — the most expensive part of a snapshot build, and nothing here
+   * looks at it.
+   */
+  async sessionState(sessionId: string): Promise<SessionState> {
+    const payload = await this.request<Record<string, unknown>>(
+      "GET",
+      `/v1/sessions/${encodeURIComponent(sessionId)}?include_items=false`,
+    );
+    return parseSessionState(payload);
   }
 
   /** Stop, never delete: the process dies, the transcript lives, the next message revives it. */

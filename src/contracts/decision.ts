@@ -22,6 +22,14 @@ export type Candidate = z.infer<typeof CandidateSchema>;
 
 const candidates = z.array(CandidateSchema).optional();
 
+/**
+ * Set when this decision supersedes the previous dispatch because the person said it went
+ * to the wrong place. A correction has the *form* of a follow-up and the opposite meaning,
+ * so it is marked rather than inferred: the repair runs before the re-route, and only ever
+ * against the immediately preceding dispatch.
+ */
+const correctsPrevious = z.boolean().optional();
+
 export const ContinueDecisionSchema = z.object({
   action: z.literal("continue"),
   session_id: z.string().min(1),
@@ -29,6 +37,7 @@ export const ContinueDecisionSchema = z.object({
   request: z.string().min(1),
   /** One short sentence spoken back immediately, before the work starts. */
   ack: z.string().min(1),
+  corrects_previous: correctsPrevious,
   candidates,
 });
 
@@ -54,7 +63,17 @@ export const NewDecisionSchema = z.object({
    */
   model: z.string().min(1).optional(),
   effort: EffortSchema.optional(),
+  corrects_previous: correctsPrevious,
   candidates,
+});
+
+/**
+ * "No, that was wrong" with nowhere named to put it instead. The repair runs and nothing is
+ * dispatched — distinct from `clarify`, which asks a question and leaves the mistake standing.
+ */
+export const UndoDecisionSchema = z.object({
+  action: z.literal("undo"),
+  ack: z.string().min(1),
 });
 
 export const ClarifyDecisionSchema = z.object({
@@ -80,12 +99,31 @@ export const RouterDecisionSchema = z.discriminatedUnion("action", [
   NewDecisionSchema,
   ClarifyDecisionSchema,
   LookupLedgerDecisionSchema,
+  UndoDecisionSchema,
 ]);
 export type RouterDecision = z.infer<typeof RouterDecisionSchema>;
 export type ContinueDecision = z.infer<typeof ContinueDecisionSchema>;
 export type NewDecision = z.infer<typeof NewDecisionSchema>;
 export type ClarifyDecision = z.infer<typeof ClarifyDecisionSchema>;
 export type LookupLedgerDecision = z.infer<typeof LookupLedgerDecisionSchema>;
+export type UndoDecision = z.infer<typeof UndoDecisionSchema>;
+
+/**
+ * Candidates are a request to look closer before committing to an address. An action that
+ * addresses nothing — an undo — has nothing to be torn between, so it carries none.
+ */
+export function candidatesOf(decision: RouterDecision): Candidate[] {
+  return "candidates" in decision ? (decision.candidates ?? []) : [];
+}
+
+/** Does this decision undo the previous dispatch before doing anything of its own? */
+export function isCorrection(decision: RouterDecision): boolean {
+  if (decision.action === "undo") return true;
+  return (
+    (decision.action === "continue" || decision.action === "new") &&
+    decision.corrects_previous === true
+  );
+}
 
 export type DecisionParseResult =
   | { ok: true; decision: RouterDecision }
@@ -124,6 +162,28 @@ export const DecisionLogEntrySchema = z.object({
   target_session_id: z.string().nullable(),
   /** Whether the action was actually carried out (a dispatch happened). */
   executed: z.boolean(),
+  /**
+   * The `pending_id` the server minted for this dispatch, when it gave one. A correction
+   * reads it back to ask the only question that decides whether interrupting is safe: has
+   * this message started, or is it still queued behind work that has nothing to do with it?
+   */
+  pending_id: z.string().nullable().optional(),
+  /** This decision undid the previous dispatch first; the repair's outcome is recorded with it. */
+  correction: z
+    .object({
+      /** The dispatch that was undone. */
+      of_session_id: z.string().nullable(),
+      /** What the repair could actually do — the C5 record of a misroute. */
+      outcome: z.enum([
+        "deleted",
+        "interrupted",
+        "queued-not-withdrawable",
+        "cannot-verify",
+        "already-finished",
+        "nothing-to-undo",
+      ]),
+    })
+    .optional(),
   /** `continue` to a session inactive beyond the candidate window. */
   reachback: z.boolean(),
   /** Why that session: the model's own reason, or the ledger query that surfaced it. */

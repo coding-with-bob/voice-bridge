@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import {
+  candidatesOf,
   RouterDecisionSchema,
   DecisionLogEntrySchema,
   parseRouterDecision,
@@ -78,7 +79,7 @@ describe("C5 router decision — discriminated union", () => {
         { session_id: "b", reason: "same workspace" },
       ],
     });
-    expect(parsed.candidates).toHaveLength(2);
+    expect(candidatesOf(parsed)).toHaveLength(2);
   });
 
   // The contract's core promise: structurally valid but unexecutable must be impossible.

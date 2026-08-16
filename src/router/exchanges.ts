@@ -14,7 +14,7 @@ import type { SpokenLogEntry } from "../contracts/spoken-log.ts";
 export interface Exchange {
   minutes_ago: number;
   utterance: string;
-  action: "continue" | "new" | "clarify" | "lookup_ledger";
+  action: "continue" | "new" | "clarify" | "lookup_ledger" | "undo";
   target_session_id: string | null;
   /** What came back: the target's first spoken line after the dispatch, or the clarify question. */
   reply: string | null;

@@ -34,7 +34,13 @@ function assertRow(testCase: RoutingCase, outcome: RunOutcome, live: boolean): v
 
   if (testCase.expect.session_id !== undefined) {
     expect(result.target_session_id).toBe(testCase.expect.session_id);
-    expect(outcome.messages.map((message) => message.id)).toEqual([testCase.expect.session_id]);
+    if (testCase.expect.corrects === true) {
+      // A correction also messages the session that received the mistake, telling it to
+      // disregard — so the request is the last message rather than the only one.
+      expect(outcome.messages.at(-1)?.id).toBe(testCase.expect.session_id);
+    } else {
+      expect(outcome.messages.map((message) => message.id)).toEqual([testCase.expect.session_id]);
+    }
   }
 
   if (testCase.expect.cwd !== undefined) {
@@ -49,6 +55,15 @@ function assertRow(testCase: RoutingCase, outcome: RunOutcome, live: boolean): v
   // into the request, the session is told to do something about Fable.
   for (const word of testCase.expect.requestExcludes ?? []) {
     for (const message of outcome.messages) expect(message.text).not.toContain(word);
+  }
+
+  if (testCase.expect.corrects !== undefined) {
+    const decision = result.decision;
+    const corrects =
+      decision.action === "undo" ||
+      ((decision.action === "continue" || decision.action === "new") &&
+        decision.corrects_previous === true);
+    expect(corrects).toBe(testCase.expect.corrects);
   }
 
   if (testCase.expect.reachback !== undefined) {

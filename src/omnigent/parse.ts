@@ -34,6 +34,31 @@ export interface TextItem {
   created_at: number;
 }
 
+/**
+ * What a correction has to know before it may interrupt: is the session busy, and is our
+ * own message still waiting rather than running?
+ *
+ * `pending_inputs` is held in the server's memory, so a restart between the dispatch and
+ * the correction empties it. An empty list therefore does not prove consumption, and the
+ * caller must treat "not found" as the ambiguous reading it is.
+ */
+export interface SessionState {
+  status: SessionStatus;
+  /** `pending_id`s of un-consumed messages, in the order the server reported them. */
+  pending_inputs: string[];
+}
+
+export function parseSessionState(raw: unknown): SessionState {
+  const record = unwrap(raw);
+  const pending = asArray(record?.pending_inputs) ?? [];
+  return {
+    status: asStatus(record?.status),
+    pending_inputs: pending
+      .map((entry) => asString(unwrap(entry)?.pending_id))
+      .filter((id): id is string => id !== null && id !== ""),
+  };
+}
+
 export function parsePoolSession(raw: unknown): PoolSession | null {
   const record = unwrap(raw);
   if (record === null) return null;
