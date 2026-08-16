@@ -83,8 +83,22 @@ export function readGcEntries(gcLogPath: string): GcLogEntry[] {
   }
 }
 
+/**
+ * The logs store UTC; the timeline is read by a person placing events in their own day,
+ * so rendering converts to local time. Machines get the raw ISO strings via `--json`.
+ */
+function localTime(ts: string): string {
+  const date = new Date(ts);
+  if (Number.isNaN(date.getTime())) return ts;
+  const pad = (part: number) => String(part).padStart(2, "0");
+  return (
+    `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ` +
+    `${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`
+  );
+}
+
 export function renderLogEvent(event: LogEvent): string {
-  const time = event.ts.slice(0, 19).replace("T", " ");
+  const time = localTime(event.ts);
   switch (event.kind) {
     case "spoken":
       return `${time}  spoke   [${event.session_id ?? "router"}] ${event.text}`;

@@ -195,6 +195,30 @@ describe("renderLogEvent", () => {
     expect(line).toContain("not executed");
   });
 
+  /**
+   * The logs store UTC (right for machines and for merging), but `bob log` is a person
+   * reading their own day — a 09:19 question rendered as "07:19" sent the first real
+   * investigation two hours astray (2026-08-16).
+   */
+  test("times are rendered in local time, not the stored UTC", () => {
+    const saved = process.env.TZ;
+    process.env.TZ = "Europe/Budapest"; // UTC+2 in August
+    try {
+      expect(
+        render({ kind: "spoken", ts: "2026-08-16T07:19:57.639Z", session_id: null, text: "x", engine: "say" }),
+      ).toStartWith("2026-08-16 09:19:57");
+    } finally {
+      if (saved === undefined) delete process.env.TZ;
+      else process.env.TZ = saved;
+    }
+  });
+
+  test("an unparseable timestamp falls back to the raw string rather than NaN", () => {
+    expect(
+      render({ kind: "spoken", ts: "not-a-date", session_id: null, text: "x", engine: "say" }),
+    ).toContain("not-a-date");
+  });
+
   test("a gc line distinguishes a real stop from a proposed one", () => {
     const entry = {
       ts: "2026-08-15T10:00:00.000Z",
