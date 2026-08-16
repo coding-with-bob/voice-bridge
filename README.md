@@ -18,8 +18,9 @@ decision D10, rules R-8 (adopted components stay stock) and R-15 (standing-proce
 
 ## Setup from zero
 
-**Prerequisites:** macOS, bun, Raycast, and a dictation tool
-(Monologue). Everything else is installed below.
+**Prerequisites:** macOS, bun, Hammerspoon and ffmpeg (the push-to-talk entry), and — for the
+typed fallback entry — Raycast with a dictation tool (Monologue). Everything else is installed
+below.
 
 ### 1. Omnigent (the session pool)
 
@@ -188,9 +189,10 @@ into files (D9), and that is a hardening trigger.
 
 Approval routing over Telegram (arrives with CHANNEL — MVP relies on the Omnigent desktop app),
 stop-hook enforcement of C6 (only if silent finishes recur), an FTS index over transcripts (only
-if peeks become frequent or slow — the decision log measures this), Whisper-API capture (only
-when Raycast + Monologue chafes), and Codex sessions (the router can address them; the
-conventions are Claude-side).
+if peeks become frequent or slow — the decision log measures this), and Codex sessions (the
+router can address them; the conventions are Claude-side). The PTT capture left this list on
+2026-08-16 — it is built, as Hammerspoon hold-to-talk + Scribe rather than the Whisper API
+([`hammerspoon/README.md`](hammerspoon/README.md) says why).
 
 ## Development
 

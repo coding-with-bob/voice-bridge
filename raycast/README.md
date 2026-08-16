@@ -1,7 +1,9 @@
-# Entry: Raycast + Monologue
+# Entry: Raycast + Monologue (typed / fallback)
 
-The whole voice entry, with no speech-to-text of our own: a Raycast script command with one
-text argument, dictated into with Monologue.
+A Raycast script command with one text argument — typed, or dictated into with Monologue —
+with no speech-to-text of our own. This was the whole voice entry at MVP; since 2026-08-16 the
+everyday gesture is the [Hammerspoon push-to-talk](../hammerspoon/README.md), and this one
+stays for typed requests and as the fallback when the chord path is out of order.
 
 ## Install
 
