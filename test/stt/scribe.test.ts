@@ -1,4 +1,7 @@
 import { describe, expect, test } from "bun:test";
+import { mkdtempSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import {
   buildScribeRequest,
   parseScribeResponse,
@@ -73,7 +76,7 @@ describe("scribe — response", () => {
 
 describe("scribe — transcribeFile", () => {
   const wavFixture = async (): Promise<string> => {
-    const path = `${import.meta.dir}/fixture-utterance.wav`;
+    const path = join(mkdtempSync(join(tmpdir(), "scribe-test-")), "fixture-utterance.wav");
     await Bun.write(path, new Uint8Array([82, 73, 70, 70, 0, 0, 0, 0])); // "RIFF" stub
     return path;
   };
