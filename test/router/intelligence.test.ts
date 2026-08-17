@@ -92,7 +92,7 @@ function harness(options: {
       },
       interrupt: async () => {},
       deleteSession: async () => {},
-      sessionState: async () => ({ status: "idle" as const, pending_inputs: [] }),
+      sessionState: async () => ({ status: "idle" as const, pending_inputs: [], runner_online: true }),
     },
     config: { ...DEFAULT_CONFIG, home_dir: home },
     paths: pathsFor(home),

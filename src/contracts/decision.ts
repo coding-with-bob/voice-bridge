@@ -193,6 +193,7 @@ export const DecisionLogEntrySchema = z.object({
         "interrupted",
         "queued-not-withdrawable",
         "foreign-turn",
+        "left-asleep",
         "cannot-verify",
         "already-finished",
         "nothing-to-undo",

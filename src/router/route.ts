@@ -465,6 +465,7 @@ function resolveExchange(
 function spokenWithRepair(ack: string, repair: RepairResult | null, config: BobConfig): string {
   if (repair === null) return ack;
   if (WITHDRAWN.includes(repair.outcome)) return `${ack} ${config.correction_undone_text}`;
+  if (repair.outcome === "left-asleep") return `${ack} ${config.correction_asleep_text}`;
   if (UNWITHDRAWN.includes(repair.outcome)) return `${ack} ${config.correction_blocked_text}`;
   // nothing-to-undo: there was no previous dispatch. Saying so would be noise.
   return ack;

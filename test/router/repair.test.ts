@@ -51,8 +51,13 @@ function stub(state: SessionState) {
   return { calls, deps };
 }
 
-const idle: SessionState = { status: "idle", pending_inputs: [] };
-const running = (pending: string[] = []): SessionState => ({ status: "running", pending_inputs: pending });
+const idle: SessionState = { status: "idle", pending_inputs: [], runner_online: true };
+const asleep: SessionState = { status: "idle", pending_inputs: [], runner_online: false };
+const running = (pending: string[] = []): SessionState => ({
+  status: "running",
+  pending_inputs: pending,
+  runner_online: true,
+});
 
 describe("isDeletableMistake — the fence, not the care", () => {
   test("a session the previous decision itself created is deletable", () => {
@@ -200,6 +205,36 @@ describe("repairPrevious", () => {
     const note = disregardTextFor("did the invoice export include the November numbers?");
     expect(note).toContain('"did the invoice export include the November numbers?"');
     expect(note).not.toContain("previous message");
+  });
+
+  /**
+   * A stopped session's status still reads "idle" — only runner_online separates asleep
+   * from awake (probed live, 2026-08-17). Posting the note would revive it: spawn a
+   * process, burn the ~3s, all to deliver "ignore something you are not working on".
+   * The mistake has already run its course; sleep is left alone.
+   */
+  test("a gc-stopped session is not revived just to be told to disregard", async () => {
+    const { calls, deps } = stub(asleep);
+    const previous = entry({
+      decision: { action: "continue", session_id: "sess-gone", request: "r", ack: "a" },
+      target_session_id: "sess-gone",
+      pending_id: "pending_ours",
+    });
+    const result = await repairPrevious(previous, [previous], deps);
+    expect(result.outcome).toBe("left-asleep");
+    expect(calls).not.toContain("message:sess-gone:disregard");
+    expect(calls).not.toContain("interrupt:sess-gone");
+  });
+
+  test("unknown liveness is treated as awake — a note beats a wrong guess", async () => {
+    const { calls, deps } = stub({ status: "idle", pending_inputs: [], runner_online: null });
+    const previous = entry({
+      decision: { action: "continue", session_id: "sess-x", request: "r", ack: "a" },
+      target_session_id: "sess-x",
+    });
+    const result = await repairPrevious(previous, [previous], deps);
+    expect(result.outcome).toBe("already-finished");
+    expect(calls).toContain("message:sess-x:disregard");
   });
 
   test("an idle session has already done it — the note is all that is left", async () => {

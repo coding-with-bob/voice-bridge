@@ -69,6 +69,8 @@ export const BobConfigSchema = z.strictObject({
   correction_blocked_text: z.string().min(1),
   /** Spoken after a correction that did stop the mistake. The router cannot know this; the repair does. */
   correction_undone_text: z.string().min(1),
+  /** Spoken when the corrected session was asleep: nothing ran, nothing was woken. */
+  correction_asleep_text: z.string().min(1),
 })
   /**
    * A default outside the offered list would be a config that contradicts itself: the
@@ -95,4 +97,5 @@ export const DEFAULT_CONFIG: Omit<BobConfig, "home_dir"> = {
   correction_window_min: 10,
   correction_blocked_text: "Ezt már nem tudtam visszavonni, csak szóltam a sessionnek.",
   correction_undone_text: "Az előzőt visszavontam.",
+  correction_asleep_text: "Az a session már aludt, nem ébresztettem fel érte.",
 };

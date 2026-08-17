@@ -17,7 +17,7 @@ function stubClient(overrides: Partial<Record<keyof StubClient, unknown>> = {}):
     sessionItems: async () => [{ id: "i", role: "assistant", text: "pong", created_at: 1 }],
     deleteSession: async () => {},
     interrupt: async () => {},
-    sessionState: async () => ({ status: "idle" as const, pending_inputs: [] }),
+    sessionState: async () => ({ status: "idle" as const, pending_inputs: [], runner_online: true }),
   };
   return { ...base, ...overrides } as StubClient;
 }

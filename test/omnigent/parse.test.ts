@@ -1,5 +1,10 @@
 import { describe, expect, test } from "bun:test";
-import { parsePoolSession, parseSessionList, parseTextItems } from "../../src/omnigent/parse.ts";
+import {
+  parsePoolSession,
+  parseSessionList,
+  parseSessionState,
+  parseTextItems,
+} from "../../src/omnigent/parse.ts";
 
 const rawSession = {
   id: "conv_abc",
@@ -137,5 +142,25 @@ describe("parseTextItems", () => {
         data: [{ id: "1", type: "message", role: "assistant", created_at: 1, content: "plain" }],
       })[0]!.text,
     ).toBe("plain");
+  });
+});
+
+describe("parseSessionState — the repair's view of a session", () => {
+  /**
+   * Status alone cannot tell a sleeping session from a live idle one — both report "idle"
+   * (probed live, 2026-08-17). What separates them is runner_online, and the difference
+   * matters: posting the disregard note to a stopped session revives it, spawning a
+   * process just to be told to ignore something.
+   */
+  test("reads runner_online, since status says idle for asleep and awake alike", () => {
+    const asleep = parseSessionState({ status: "idle", pending_inputs: [], runner_online: false });
+    expect(asleep.runner_online).toBe(false);
+    const awake = parseSessionState({ status: "idle", pending_inputs: [], runner_online: true });
+    expect(awake.runner_online).toBe(true);
+  });
+
+  test("a snapshot without liveness reads as unknown, never as asleep", () => {
+    const state = parseSessionState({ status: "idle", pending_inputs: [] });
+    expect(state.runner_online).toBeNull();
   });
 });

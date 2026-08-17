@@ -24,6 +24,8 @@ export type RepairOutcome =
   | "queued-not-withdrawable"
   /** Consumed into a turn that was already running at dispatch — never interruptible. */
   | "foreign-turn"
+  /** The session sleeps; the mistake has run its course, and a note is not worth waking it for. */
+  | "left-asleep"
   | "cannot-verify"
   | "already-finished"
   | "nothing-to-undo";
@@ -182,6 +184,11 @@ export async function repairPrevious(
 
   // Idle: whatever the message caused has already happened. Interrupting would cut into
   // nothing, or into something the person asked for afterwards.
+  if (state.runner_online === false) {
+    // Posting the note would revive the session — spawn a process just to deliver "ignore
+    // something you are not working on". Sleep is left alone; the log carries the truth.
+    return { outcome: "left-asleep", sessionId, ofTs };
+  }
   await deps.client.postMessage(sessionId, note);
   return { outcome: "already-finished", sessionId, ofTs };
 }

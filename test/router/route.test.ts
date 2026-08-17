@@ -60,7 +60,7 @@ function harness(overrides: Partial<RouteDeps> = {}) {
       sessionItems: async () => [],
       interrupt: async () => {},
       deleteSession: async () => {},
-      sessionState: async () => ({ status: "idle" as const, pending_inputs: [] }),
+      sessionState: async () => ({ status: "idle" as const, pending_inputs: [], runner_online: true }),
     },
     config: { ...DEFAULT_CONFIG, home_dir: home },
     paths: pathsFor(home),
@@ -246,7 +246,7 @@ describe("route — the deterministic fallback", () => {
         sessionItems: async () => [],
         interrupt: async () => {},
         deleteSession: async () => {},
-        sessionState: async () => ({ status: "idle" as const, pending_inputs: [] }),
+        sessionState: async () => ({ status: "idle" as const, pending_inputs: [], runner_online: true }),
       },
     });
     await expectFallback(deps, spoken, "dispatch failed");
@@ -279,7 +279,7 @@ describe("route — hard failures stay hard", () => {
         sessionItems: async () => [],
         interrupt: async () => {},
         deleteSession: async () => {},
-        sessionState: async () => ({ status: "idle" as const, pending_inputs: [] }),
+        sessionState: async () => ({ status: "idle" as const, pending_inputs: [], runner_online: true }),
       },
     });
     await expect(route("do the thing", deps)).rejects.toThrow(RouteError);

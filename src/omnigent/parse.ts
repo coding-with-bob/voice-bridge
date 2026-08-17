@@ -46,6 +46,12 @@ export interface SessionState {
   status: SessionStatus;
   /** `pending_id`s of un-consumed messages, in the order the server reported them. */
   pending_inputs: string[];
+  /**
+   * Whether the session's process is actually alive. Status cannot answer this — a stopped
+   * session still reports "idle" (probed live, 2026-08-17); only liveness tells sleep from
+   * an awake pause. `null` when the snapshot carried no liveness: unknown, never asleep.
+   */
+  runner_online: boolean | null;
 }
 
 export function parseSessionState(raw: unknown): SessionState {
@@ -56,6 +62,7 @@ export function parseSessionState(raw: unknown): SessionState {
     pending_inputs: pending
       .map((entry) => asString(unwrap(entry)?.pending_id))
       .filter((id): id is string => id !== null && id !== ""),
+    runner_online: typeof record?.runner_online === "boolean" ? record.runner_online : null,
   };
 }
 

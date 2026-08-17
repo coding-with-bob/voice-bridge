@@ -172,7 +172,7 @@ export class OmnigentClient {
   async sessionState(sessionId: string): Promise<SessionState> {
     const payload = await this.request<Record<string, unknown>>(
       "GET",
-      `/v1/sessions/${encodeURIComponent(sessionId)}?include_items=false`,
+      `/v1/sessions/${encodeURIComponent(sessionId)}?include_items=false&include_liveness=true`,
     );
     return parseSessionState(payload);
   }
