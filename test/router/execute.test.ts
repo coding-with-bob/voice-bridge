@@ -365,7 +365,8 @@ describe("routedMessage", () => {
         "This request was spoken — Felho may not be watching any terminal — so on top of " +
         'whatever you print, speak your answer: bobsay --session abc "<what to say>". ' +
         "One plain sentence when you report on work; the whole answer when the answer itself " +
-        "is what was asked to be heard]\n\ndo the thing",
+        "is what was asked to be heard. Speak a question out loud before you park the turn " +
+        "on it]\n\ndo the thing",
     );
   });
 
@@ -380,6 +381,17 @@ describe("routedMessage", () => {
     const block = metadataBlock("conv_stale");
     expect(block).toContain('bobsay --session conv_stale');
     expect(block).toContain("spoken");
+  });
+
+  /**
+   * Asking is not finishing, so a session reading only the finish-of-work rule can open a
+   * question dialog and stand there in silence — 91 seconds of it on 2026-08-17, with nothing
+   * audible to say a session was waiting. The rule went into the convention first; it rides
+   * the block too, for the same reason the speak rule does: a frozen convention never learns
+   * an amendment, and the block is the only channel that reaches every session every time.
+   */
+  test("the block itself tells a stale session to speak a question before blocking on it", () => {
+    expect(metadataBlock("conv_stale")).toContain("Speak a question out loud before you park");
   });
 
   test("the block stays a single bracketed unit — one closing bracket, at the very end", () => {

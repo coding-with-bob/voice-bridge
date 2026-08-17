@@ -53,6 +53,9 @@ export function readConvention(conventionFile: string): string {
  * never learns a later amendment — the first silent finish (2026-08-16) was exactly that: a
  * session whose frozen text predated "block means spoken, answer out loud". The block reaches
  * every session on every routed message, so the rule travels where the convention cannot.
+ * The question rule (2026-08-17) rides along for the same reason, and earns the length the
+ * same way: a session that parks on a question nobody heard is stopped until someone thinks
+ * to look at a terminal.
  * Invariant: no `]` before the closing bracket — the strip regex cuts at the first one.
  */
 export function metadataBlock(sessionId: string): string {
@@ -61,7 +64,7 @@ export function metadataBlock(sessionId: string): string {
     `This request was spoken — Felho may not be watching any terminal — so on top of ` +
     `whatever you print, speak your answer: bobsay --session ${sessionId} "<what to say>". ` +
     `One plain sentence when you report on work; the whole answer when the answer itself ` +
-    `is what was asked to be heard]`
+    `is what was asked to be heard. Speak a question out loud before you park the turn on it]`
   );
 }
 

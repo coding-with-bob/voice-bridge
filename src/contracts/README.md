@@ -82,7 +82,7 @@ after `createSession` returns. The router therefore prefixes **every message it 
 `continue` included, not just the first on spawn — with a delimited metadata block:
 
 ```
-[bob metadata — not part of the request: your session id is <id>. This request was spoken — Felho may not be watching any terminal — so on top of whatever you print, speak your answer: bobsay --session <id> "<what to say>". One plain sentence when you report on work; the whole answer when the answer itself is what was asked to be heard]
+[bob metadata — not part of the request: your session id is <id>. This request was spoken — Felho may not be watching any terminal — so on top of whatever you print, speak your answer: bobsay --session <id> "<what to say>". One plain sentence when you report on work; the whole answer when the answer itself is what was asked to be heard. Speak a question out loud before you park the turn on it]
 ```
 
 The convention states that this block is transport metadata: never quote it, never treat it as
@@ -105,6 +105,17 @@ prompt, but the block reaches every session on every routed message, so the spea
 request → answer out loud, sized report-vs-answer) now rides inside the block itself instead of
 only pointing at convention text a stale session may not have. Invariant the tests pin: no `]`
 before the closing bracket, or the strip regex would leave a smuggleable tail.
+
+**A question is spoken before the turn parks on it** (amended 2026-08-17). Asking is not finishing,
+so the finish-of-work rule never reached it: a session opened an `AskUserQuestion` dialog and stood
+silent for 91 seconds, until someone happened to look at a terminal. Nothing else covers the gap —
+the turn does not end, so a Stop hook would not fire, and Claude Code's `Notification` hook has only
+two types (`permission_prompt`, `idle_prompt`), neither emitted for that dialog. The rule is
+deliberately a convention first: no evidence exists that sessions ignore it, because it had never
+been asked for. It rides the block as well as the convention, on the 2026-08-16 reasoning above —
+the same lengthening of the block, bought for the same reason. If a spoken turn is later found
+opening a question dialog with no `bobsay` in front of it, the deterministic form is a `PreToolUse`
+hook on `AskUserQuestion` (`~/dev/bob-jarvis/design/voice-bridge-one-pager.md`, Q5).
 
 **Speech comes in two sizes** (amended 2026-08-15, same day, second failure). The convention
 distinguishes *reporting on work* — one plain sentence, as before — from *the answer itself being
