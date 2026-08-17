@@ -76,7 +76,14 @@ Withdrawing a request works the same way — *"erre már nincs szükségem, hagy
 feladatot"* — and goes through the same undo machinery rather than being delivered as a polite
 stop message. That distinction is not cosmetic: a busy session cannot stop its own turn by being
 told, because the message queues behind the very work it means to stop. Stopping a running
-dispatch is a platform act, and only the router can perform it. What "undo" means depends on what the mistake was: a session
+dispatch is a platform act, and only the router can perform it.
+
+One boundary is deliberate: **a request sent to an already-busy session can never be interrupted
+later** — withdrawn only by note. A queued message merges into the running foreign turn at its
+first tool boundary (measured: 3 s in, turn still running), so once it is out of the queue there
+is no way to stop it without killing the work it hid inside. What makes the safe case provable
+is a fact recorded at dispatch time: a message sent to an *idle* session started the turn now
+running, and that turn — and only that — a correction may interrupt. What "undo" means depends on what the mistake was: a session
 that exists only because of it is interrupted and deleted; a message that has started running is
 interrupted; a message still queued behind unrelated work is **not** interrupted, because that
 would cancel someone else's turn and let the mistake start next anyway. In that last case the

@@ -22,6 +22,8 @@ export type RepairOutcome =
   | "deleted"
   | "interrupted"
   | "queued-not-withdrawable"
+  /** Consumed into a turn that was already running at dispatch — never interruptible. */
+  | "foreign-turn"
   | "cannot-verify"
   | "already-finished"
   | "nothing-to-undo";
@@ -56,6 +58,7 @@ export function disregardTextFor(request: string): string {
 /** Outcomes the person is told about, because the mistake is still standing in some form. */
 export const UNWITHDRAWN: readonly RepairOutcome[] = [
   "queued-not-withdrawable",
+  "foreign-turn",
   "cannot-verify",
   // Already finished counts as not withdrawn: the note was sent, but the work happened.
   "already-finished",
@@ -91,8 +94,16 @@ export function isDeletableMistake(
   if (previous.target_session_id === null || !previous.executed) return false;
   const at = Date.parse(previous.ts);
   if (now.getTime() - at > windowMs) return false;
-  // Anything dispatched to it since is work the person put there deliberately. Compared by
-  // timestamp rather than object identity, so this holds for a log read back from disk.
+  return nothingDispatchedSince(previous, history);
+}
+
+/**
+ * Anything dispatched to the same session after `previous` is work the person put there
+ * deliberately — it forfeits both deletion and the interrupt proof. Compared by timestamp
+ * rather than object identity, so this holds for a log read back from disk.
+ */
+function nothingDispatchedSince(previous: DecisionLogEntry, history: DecisionLogEntry[]): boolean {
+  const at = Date.parse(previous.ts);
   return !history.some(
     (entry) =>
       entry.executed &&
@@ -142,22 +153,31 @@ export async function repairPrevious(
     return { outcome: "queued-not-withdrawable", sessionId, ofTs };
   }
 
-  /**
-   * Interrupting requires *positive* proof that the running turn is ours: a pending id that
-   * has since drained. Without an id there is no proof, only an inference — and the two
-   * errors are not symmetric. Failing to stop a bad message wastes a turn; cancelling the
-   * wrong one destroys work the person is waiting for. `pending_inputs` lives in the
-   * server's memory, so a restart empties it and makes "absent" mean nothing at all.
-   */
-  if (pendingId === null && busy) {
+  if (busy) {
+    /**
+     * Interrupting requires *positive* proof that the running turn is ours, and "our
+     * pending id has drained" is not it: a queued message drains into a *foreign* turn at
+     * its first tool boundary and merges with it (measured 2026-08-17 — drained 3s in,
+     * turn still running; the first microphone trial interrupted an essay this way). The
+     * proof is the fact recorded at dispatch: a message sent to an idle session started
+     * the turn that is running now — unless something else was dispatched there since.
+     * The two errors stay asymmetric: failing to stop a bad message wastes a turn;
+     * cancelling the wrong one destroys work the person is waiting for.
+     */
+    const atDispatch = previous.target_status_at_dispatch;
+    if (atDispatch === "running" || atDispatch === "waiting") {
+      // Ours queued or merged into someone else's turn — never interruptible.
+      await deps.client.postMessage(sessionId, note);
+      return { outcome: "foreign-turn", sessionId, ofTs };
+    }
+    if ((atDispatch === "idle" || atDispatch === "new") && nothingDispatchedSince(previous, history)) {
+      await deps.client.interrupt(sessionId);
+      await deps.client.postMessage(sessionId, note);
+      return { outcome: "interrupted", sessionId, ofTs };
+    }
+    // Status unknown (an older log entry), or something else dispatched since: no proof.
     await deps.client.postMessage(sessionId, note);
     return { outcome: "cannot-verify", sessionId, ofTs };
-  }
-
-  if (busy) {
-    await deps.client.interrupt(sessionId);
-    await deps.client.postMessage(sessionId, note);
-    return { outcome: "interrupted", sessionId, ofTs };
   }
 
   // Idle: whatever the message caused has already happened. Interrupting would cut into

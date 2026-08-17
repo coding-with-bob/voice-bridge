@@ -120,12 +120,13 @@ describe("repairPrevious", () => {
     expect(calls).toContain("message:sess-busy:disregard");
   });
 
-  test("a message that has drained from the queue is ours to interrupt", async () => {
+  test("dispatched to an idle session, drained, busy now — the turn is provably ours", async () => {
     const { calls, deps } = stub(running([]));
     const previous = entry({
       decision: { action: "continue", session_id: "sess-busy", request: "r", ack: "a" },
       target_session_id: "sess-busy",
       pending_id: "pending_ours",
+      target_status_at_dispatch: "idle",
     });
     const result = await repairPrevious(previous, [previous], deps);
     expect(result.outcome).toBe("interrupted");
@@ -133,11 +134,51 @@ describe("repairPrevious", () => {
   });
 
   /**
+   * The branch the first microphone trial fell through (2026-08-17). Measured: a queued
+   * message drains at the first tool boundary of a *foreign* turn and merges into it —
+   * 3s in, with the turn still running. "Drained + busy" therefore proves nothing about
+   * whose turn is running; what does is the fact recorded at dispatch time. A message sent
+   * to an already-busy session can never be interrupted later, only disowned by note.
+   */
+  test("dispatched to a busy session — never interrupted, whatever the queue says now", async () => {
+    const { calls, deps } = stub(running([]));
+    const previous = entry({
+      decision: { action: "continue", session_id: "sess-busy", request: "r", ack: "a" },
+      target_session_id: "sess-busy",
+      pending_id: "pending_ours",
+      target_status_at_dispatch: "running",
+    });
+    const result = await repairPrevious(previous, [previous], deps);
+    expect(result.outcome).toBe("foreign-turn");
+    expect(calls).not.toContain("interrupt:sess-busy");
+    expect(calls).toContain("message:sess-busy:disregard");
+  });
+
+  test("dispatched when idle but something else sent since — proof lost, no interrupt", async () => {
+    const { calls, deps } = stub(running([]));
+    const previous = entry({
+      ts: "2026-08-16T11:58:00.000Z",
+      decision: { action: "continue", session_id: "sess-busy", request: "r", ack: "a" },
+      target_session_id: "sess-busy",
+      pending_id: "pending_ours",
+      target_status_at_dispatch: "idle",
+    });
+    const later = entry({
+      ts: "2026-08-16T11:59:00.000Z",
+      decision: { action: "continue", session_id: "sess-busy", request: "other", ack: "a" },
+      target_session_id: "sess-busy",
+    });
+    const result = await repairPrevious(previous, [previous, later], deps);
+    expect(result.outcome).toBe("cannot-verify");
+    expect(calls).not.toContain("interrupt:sess-busy");
+  });
+
+  /**
    * Without a pending id there is no proof that the running turn is ours — only an
    * inference. The two errors are not symmetric: failing to stop a bad message wastes a
    * turn, cancelling the wrong one destroys work someone is waiting for.
    */
-  test("a busy session with no id to prove ownership is left running", async () => {
+  test("a busy session with neither an id nor a dispatch-time status is left running", async () => {
     const { calls, deps } = stub(running([]));
     const previous = entry({
       decision: { action: "continue", session_id: "sess-busy", request: "r", ack: "a" },

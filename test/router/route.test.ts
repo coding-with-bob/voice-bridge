@@ -119,6 +119,9 @@ describe("route — continue", () => {
       peeked: false,
       latency_ms: 1234,
       model: DEFAULT_CONFIG.router_model,
+      // The target was idle when we dispatched — the fact a later correction's interrupt
+      // proof rests on, recorded here because it cannot be reconstructed afterwards.
+      target_status_at_dispatch: "idle",
     });
     expect(entry!.context_digest).toContain("1 candidates");
   });
@@ -151,6 +154,8 @@ describe("route — new", () => {
     });
     await route("x", deps);
     expect(logOf()[0]!.target_session_id).toBe("conv_fresh");
+    // A session this decision created: its first turn is ours by construction.
+    expect(logOf()[0]!.target_status_at_dispatch).toBe("new");
   });
 });
 

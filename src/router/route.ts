@@ -171,6 +171,7 @@ async function routeUnderLock(
     target_session_id: targetSessionId,
     executed,
     pending_id: pendingId,
+    ...(executed ? { target_status_at_dispatch: targetStatusAtDispatch(decision, context) } : {}),
     ...(repair === null
       ? {}
       : {
@@ -416,6 +417,20 @@ function describeReachback(
 
 function fallbackDecision(config: BobConfig): RouterDecision {
   return { action: "clarify", question: config.clarify_fallback_text };
+}
+
+/**
+ * The target's status the moment we dispatched — read off the context the decision was made
+ * from, because it cannot be reconstructed later. This is what decides, at correction time,
+ * whether the turn then running belongs to this dispatch (see repair.ts).
+ */
+function targetStatusAtDispatch(decision: RouterDecision, context: RoutingContext): string {
+  if (decision.action === "new") return "new";
+  if (decision.action !== "continue") return "unknown";
+  const candidate =
+    context.candidates.find((session) => session.id === decision.session_id) ??
+    context.ledger_matches.find((session) => session.id === decision.session_id);
+  return candidate?.status ?? "unknown";
 }
 
 /** The exchanges a correction may name: the ones that actually dispatched somewhere. */

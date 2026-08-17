@@ -172,6 +172,14 @@ export const DecisionLogEntrySchema = z.object({
    * this message started, or is it still queued behind work that has nothing to do with it?
    */
   pending_id: z.string().nullable().optional(),
+  /**
+   * The target's pool status the moment this was dispatched ("idle", "running", …, or
+   * "new" for a session this decision created). Recorded because it cannot be inferred
+   * later: a queued message drains into a *foreign* turn at its first tool boundary
+   * (measured 2026-08-17 — 3s in, turn still running), so "drained + busy" proves nothing
+   * about whose turn is running. Whether an interrupt is safe is decided by this fact.
+   */
+  target_status_at_dispatch: z.string().optional(),
   /** This decision undid the previous dispatch first; the repair's outcome is recorded with it. */
   correction: z
     .object({
@@ -184,6 +192,7 @@ export const DecisionLogEntrySchema = z.object({
         "deleted",
         "interrupted",
         "queued-not-withdrawable",
+        "foreign-turn",
         "cannot-verify",
         "already-finished",
         "nothing-to-undo",
