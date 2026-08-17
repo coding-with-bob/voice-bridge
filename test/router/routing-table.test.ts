@@ -105,6 +105,8 @@ describe.if(!LIVE)("routing table (mocked model — orchestration)", () => {
     for (const testCase of ROUTING_TABLE) {
       const specified =
         testCase.expect.action === "clarify" ||
+        // An undo dispatches nowhere; what it must state is which exchange it undoes.
+        (testCase.expect.action === "undo" && testCase.expect.corrects !== undefined) ||
         testCase.expect.session_id !== undefined ||
         testCase.expect.cwd !== undefined;
       expect(specified).toBe(true);

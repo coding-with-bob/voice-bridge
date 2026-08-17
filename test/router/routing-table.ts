@@ -31,7 +31,7 @@ export const PROJECT_DIRS = ["craft", "confpipeline", "hey-bob"];
 export const PROJECTS_ROOT = join(homedir(), "dev");
 
 export interface RoutingExpectation {
-  action: "continue" | "new" | "clarify";
+  action: "continue" | "new" | "clarify" | "undo";
   session_id?: string;
   /** Compared after `~`/root expansion, so rows stay readable. */
   cwd?: string;
@@ -302,6 +302,47 @@ export const ROUTING_TABLE: RoutingCase[] = [
       session_id: "sess-invoices",
       corrects: new Date(minutesAgo(5) * 1000).toISOString(),
     },
+  },
+  {
+    // Regression (2026-08-17, first microphone trial): this utterance — verbatim, Scribe's
+    // mishearing included — was routed as a follow-up and delivered as a polite "stop"
+    // message that queued behind the very task it meant to stop. The recipe only knew
+    // wrong-address corrections; a *withdrawal* ("I no longer need it") claims no wrong
+    // address, so it fell through. The person had to claim a misroute that never happened
+    // to get the interrupt. Withdrawal is now correction vocabulary.
+    name: "a withdrawal is a correction, not a message to the session it would stop",
+    sessions: [
+      session({
+        id: "sess-youtube",
+        title: "YouTube összefoglaló",
+        status: "running",
+        updated_at: minutesAgo(1),
+      }),
+    ],
+    decisions: [
+      {
+        ts: new Date(minutesAgo(1) * 1000).toISOString(),
+        utterance: "Van a vágólapon egy YouTube link. Olvasd ki, és készíts összefoglalót",
+        context_digest: "1 candidate",
+        decision: {
+          action: "new",
+          cwd: "HOME_DIR",
+          request: "Olvasd ki a vágólapról a YouTube linket, és készíts róla összefoglalót",
+          ack: "Új session: home.",
+        },
+        latency_ms: 1300,
+        model: "claude-opus-5",
+        target_session_id: "sess-youtube",
+        executed: true,
+        pending_id: "pending_youtube",
+        reachback: false,
+        peeked: false,
+        fallback: false,
+      },
+    ],
+    utterance: "Megjöttem, hogy erre még nincs szükségem. Hagyd az előző feladatot",
+    scripted: [{ action: "undo", corrects: "x1", ack: "Rendben." }],
+    expect: { action: "undo", corrects: new Date(minutesAgo(1) * 1000).toISOString() },
   },
   {
     // The same guard every other address gets: an exchange id nobody offered never reaches

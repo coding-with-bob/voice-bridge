@@ -110,9 +110,32 @@ describe("SYSTEM_PROMPT — the discipline is stated, not implied", () => {
    * address was wrong. Deliberated before FOLLOW-UP, or the fix is delivered to the very
    * session that received the mistake.
    */
+  /**
+   * Regression (2026-08-17, first microphone trial): "erre már nincs szükségem, hagyd az
+   * előző feladatot" routed as a follow-up — a polite stop message queued behind the very
+   * task it meant to stop, read only after that task finished. A withdrawal claims no wrong
+   * address, so the wrong-address-only vocabulary let it fall through. Stopping a running
+   * dispatch is a platform act only the router can perform; the session cannot interrupt
+   * its own turn, and a queued message is by definition too late.
+   */
+  test("withdrawing a request is correction vocabulary, not a message to the session", () => {
+    expect(SYSTEM_PROMPT).toContain("withdraws it");
+    expect(SYSTEM_PROMPT).toContain("már nem kell");
+    expect(SYSTEM_PROMPT).toContain("cannot stop it by being told");
+  });
+
+  /**
+   * Observed in the same trial: the undo ack said "visszavontam" before the repair had run,
+   * and the code then appended the real outcome — so "withdrew it" was spoken twice, once
+   * as a claim and once as a fact. The recipe now forbids the claim on the undo branch too.
+   */
+  test("an undo ack acknowledges without claiming an outcome", () => {
+    expect(SYSTEM_PROMPT).toContain('For "undo" it is a plain acknowledgement');
+  });
+
   test("a correction is considered before anything can swallow it as a follow-up", () => {
     expect(SYSTEM_PROMPT.indexOf("CORRECTION")).toBeLessThan(SYSTEM_PROMPT.indexOf("FOLLOW-UP"));
-    expect(SYSTEM_PROMPT).toContain("A correction is never a follow-up");
+    expect(SYSTEM_PROMPT).toContain("Neither is ever a follow-up");
     // Identification is semantic, and refusal to guess is stated, not implied.
     expect(SYSTEM_PROMPT).toContain("identify WHICH exchange");
     expect(SYSTEM_PROMPT).toContain("never guess at what to undo");

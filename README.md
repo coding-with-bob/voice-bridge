@@ -70,7 +70,13 @@ invoice exportos sessionbe"*. The router treats that as a correction rather than
 identifies **which** request you mean against the recent exchanges — by content, or by position
 when you count ("az előző", "a kettővel ezelőtti") — undoes what it can, and re-routes. A good
 request that arrived between the mistake and the correction is untouched, and a correction the
-router cannot pin to a specific exchange becomes a question, never a guess. What "undo" means depends on what the mistake was: a session
+router cannot pin to a specific exchange becomes a question, never a guess.
+
+Withdrawing a request works the same way — *"erre már nincs szükségem, hagyd az előző
+feladatot"* — and goes through the same undo machinery rather than being delivered as a polite
+stop message. That distinction is not cosmetic: a busy session cannot stop its own turn by being
+told, because the message queues behind the very work it means to stop. Stopping a running
+dispatch is a platform act, and only the router can perform it. What "undo" means depends on what the mistake was: a session
 that exists only because of it is interrupted and deleted; a message that has started running is
 interrupted; a message still queued behind unrelated work is **not** interrupted, because that
 would cancel someone else's turn and let the mistake start next anyway. In that last case the
