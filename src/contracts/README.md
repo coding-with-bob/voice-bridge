@@ -37,6 +37,14 @@ bobsay [--session <id>] [--answer <id>] [--voice <engine:voice>] [--engine eleve
 - **A killed bobsay silences its player** (obligation added 2026-08-18, barge-in): SIGTERM/SIGINT
   cleanup must kill the spawned `afplay`/`say` child before exiting, not just release the ticket.
   This is what makes `bob hush` = "SIGTERM the holder pid" sufficient.
+- **An interruption is not a failure** (added 2026-08-18, after the first one in the wild): when
+  the signal arrives while a C7 quiet window stands, the kill came from `bob hush` — a person
+  deciding they had heard enough — and bobsay exits **0** with an explicit stderr line saying so
+  and forbidding a retry. A nonzero status here is read by the calling session as a failed
+  command, and the sensible thing to do with a failed command is run it again: a cut answer was
+  re-spoken in full five seconds later, before the person's follow-up had even arrived. Exit 0
+  hides nothing — how much was heard is in the C2 ledger, sentence by sentence, and what was not
+  is in the C7 record. A kill with no quiet window standing still exits 143/130 as before.
 - Side effects, in this order: play audio (serialized via a file lock) → **on successful playback**
   append the C2 log line. The log records only what was actually heard; a failed playback writes no line.
 - A single call is capped at `MAX_SPOKEN_CHARS` (5,000 — runaway protection, roughly five minutes of

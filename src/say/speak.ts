@@ -18,6 +18,8 @@ import { applyProsody } from "./prosody.ts";
 import { splitSentences } from "./sentences.ts";
 import { fallbackSayVoice, selectVoice } from "./select.ts";
 import { acquireLock, LockTimeoutError, type LockOptions } from "./lock.ts";
+import { setSignalExit, type SignalExit } from "./cleanup.ts";
+import { pauseIsStanding } from "./pause.ts";
 import { appendSpokenLine } from "./spoken-log.ts";
 import type { EngineRegistry, PreparedSpeech } from "./engines/engine.ts";
 import type { Engine } from "../contracts/spoken-log.ts";
@@ -94,6 +96,8 @@ export async function speak(options: SpeakOptions): Promise<SpeakResult> {
   });
 
   const lockDir = playbackLockDir(options.homeDir);
+  // From here until playback is over, a signal may be `bob hush` rather than a failure.
+  setSignalExit(() => interruptedExit(options.homeDir));
   const handle = await takeLock(lockDir, { ...options.lockOptions, body: bodyFor(0) }, warn);
 
   let current = requested;
@@ -195,6 +199,7 @@ export async function speak(options: SpeakOptions): Promise<SpeakResult> {
   } finally {
     discard(prefetch);
     handle?.release();
+    setSignalExit(null);
   }
 
   return {
@@ -204,6 +209,30 @@ export async function speak(options: SpeakOptions): Promise<SpeakResult> {
     log_path: logPath,
     truncated: dropped > 0,
     answer_id: answerId,
+  };
+}
+
+/**
+ * Being killed while a quiet window stands means `bob hush` did it — the person pressed
+ * push-to-talk, which is a decision, not a failure. Reporting it as one is not a cosmetic
+ * problem: a session reading a nonzero exit does the sensible thing with a failed command
+ * and runs it again. Observed 2026-08-18 in the wild — a cut answer was re-spoken in full
+ * five seconds later, before the person's follow-up had even arrived, and the retry was
+ * what they heard as "it started reading the whole list again".
+ *
+ * So the exit is 0 — the strongest "do not retry" an agent understands — and stderr says
+ * what happened. Nothing is hidden by it: how much was actually heard is in the C2 ledger,
+ * sentence by sentence, and what was not is in the C7 interruption record.
+ */
+function interruptedExit(homeDir: string): SignalExit | null {
+  if (!pauseIsStanding(homeDir)) return null; // an ordinary kill: report it as one
+  return {
+    code: 0,
+    message:
+      "bobsay: interrupted — Felho pressed push-to-talk while this was playing, so the rest " +
+      "was not heard. This is NOT a failure: do not run it again and do not repeat the answer " +
+      "unprompted. His own message is already on its way, and it will say what he wants " +
+      "instead and where the cut fell.",
   };
 }
 

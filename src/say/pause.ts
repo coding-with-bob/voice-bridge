@@ -40,6 +40,17 @@ export function readPauseMarker(homeDir: string): PauseMarker | null {
   }
 }
 
+/**
+ * Is a quiet window standing right now? A read-only check — unlike the lock's own, it
+ * reaps nothing, because the caller may be a process on its way out.
+ */
+export function pauseIsStanding(homeDir: string, now: Date = new Date()): boolean {
+  const marker = readPauseMarker(homeDir);
+  if (marker === null) return false;
+  const deadline = Date.parse(marker.deadline);
+  return Number.isFinite(deadline) && deadline > now.getTime();
+}
+
 /** Lift the pause. True when there was one to lift. */
 export function clearPauseMarker(homeDir: string): boolean {
   try {

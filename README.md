@@ -127,7 +127,7 @@ Two entries, one pipeline:
 bob doctor
 ```
 
-Nine checks, and a failure names the command that fixes it. **This is the mandatory
+Ten checks, and a failure names the command that fixes it. **This is the mandatory
 post-upgrade check** the platform contract requires — run it after every Omnigent upgrade, not
 just when something feels wrong. It re-verifies the loopback bind (the R-15 condition), the host
 daemon, the C6 convention, the router's real decision call, and a full create-message-answer
@@ -155,6 +155,8 @@ upgrade could take that away and nothing else in the system would notice.
 | `bobsay "<text>"` | Speak text and record what was heard in the ledger. One sentence for a status report; a content-length answer goes in one call when it fits (the cap is 5,000 chars, and a cut warns on stderr — never silent), split into as few chained calls as possible above that. `--session <id>` when a session is speaking, `--answer <id>` when chained calls form one answer, `--voice`, `--engine`, `--json`. |
 
 Exit codes are uniform: **0** done, **1** could not do it, **2** the call or the setup was wrong.
+A `bobsay` stopped by `bob hush` also exits **0** — an interruption is a decision, not a
+failure — and says so on stderr, because a session that reads a failure runs the command again.
 
 ---
 
