@@ -28,6 +28,11 @@ export class LockTimeoutError extends Error {
 
 export interface LockHandle {
   release(): void;
+  /**
+   * Rewrite this ticket's C7 body in place — the holder calls it at every sentence
+   * boundary so `remaining_text` always names the unspoken tail. No-op after release.
+   */
+  rewriteBody(body: TicketBody): void;
 }
 
 export interface LockOptions {
@@ -201,6 +206,10 @@ function startHolding(ticketPath: string, staleMs: number): LockHandle {
       clearInterval(heartbeat);
       heldTickets.delete(ticketPath);
       remove(ticketPath);
+    },
+    rewriteBody(body: TicketBody) {
+      if (released) return;
+      writeFileSync(ticketPath, JSON.stringify(body));
     },
   };
 }

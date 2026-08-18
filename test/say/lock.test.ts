@@ -148,6 +148,29 @@ describe("acquireLock — ticket bodies (C7)", () => {
   });
 });
 
+describe("LockHandle.rewriteBody", () => {
+  test("the holder can rewrite its body — remaining_text shrinks at sentence boundaries", async () => {
+    const handle = await acquireLock(dir, {
+      ...fast,
+      body: { session_id: "s", answer_id: null, remaining_text: "One. Two." },
+    });
+    handle.rewriteBody({ session_id: "s", answer_id: null, remaining_text: "Two." });
+
+    expect(readTickets(dir)[0]!.body?.remaining_text).toBe("Two.");
+    handle.release();
+  });
+
+  test("rewriting after release is a no-op — no ticket resurrection", async () => {
+    const handle = await acquireLock(dir, {
+      ...fast,
+      body: { session_id: "s", answer_id: null, remaining_text: "One." },
+    });
+    handle.release();
+    handle.rewriteBody({ session_id: "s", answer_id: null, remaining_text: "ghost" });
+    expect(readdirSync(dir)).toHaveLength(0);
+  });
+});
+
 describe("readTickets", () => {
   test("returns name, pid from the filename, and the parsed body, in FIFO order", async () => {
     writeFileSync(
