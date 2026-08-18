@@ -5,7 +5,7 @@
  * Anything that goes wrong here throws — the caller's job is to fall back to `say`
  * audibly, so this module never degrades quietly on its own.
  */
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { PreparedSpeech, SpeakTuning, SpeechEngine } from "./engine.ts";
@@ -60,6 +60,97 @@ export function buildElevenLabsRequest(options: {
       }),
     },
   };
+}
+
+/**
+ * ElevenLabs bakes dead air into the clips — measured 2026-08-18 at 0.28-1.12 s of
+ * trailing silence per sentence, which was the audible gap between chunked sentences.
+ * Two deterministic ffmpeg passes fix it: silencedetect finds the last silence, atrim
+ * cuts the tail while keeping a natural breath. (The one-pass silenceremove/areverse
+ * trick fails here: the clips end in a ~20 ms above-threshold codec blip, so the
+ * reversed stream does not *start* with silence and nothing gets removed.)
+ */
+const TRIM_KEEP_TAIL_S = 0.15;
+/** A blip this close to EOF is codec noise, not speech — it must not protect the tail. */
+const TRIM_EDGE_TOLERANCE_S = 0.05;
+
+export function silenceDetectArgs(input: string): string[] {
+  return ["-hide_banner", "-i", input, "-af", "silencedetect=noise=-45dB:d=0.1", "-f", "null", "-"];
+}
+
+export function atrimArgs(input: string, output: string, end: number): string[] {
+  return ["-y", "-hide_banner", "-loglevel", "error", "-i", input, "-af", `atrim=end=${end}`, output];
+}
+
+/**
+ * Where to cut the tail, from silencedetect's stderr — or null when there is nothing
+ * worth cutting (speech runs to the end, tail already natural, output unparseable).
+ */
+export function computeTrimEnd(detectOutput: string): number | null {
+  const duration = parseDuration(detectOutput);
+  if (duration === null) return null;
+
+  const starts = [...detectOutput.matchAll(/silence_start: ([\d.]+)/g)];
+  const ends = [...detectOutput.matchAll(/silence_end: ([\d.]+)/g)];
+  if (starts.length === 0 || ends.length === 0) return null;
+  const lastStart = Number.parseFloat(starts[starts.length - 1]![1]!);
+  const lastEnd = Number.parseFloat(ends[ends.length - 1]![1]!);
+
+  if (duration - lastEnd > TRIM_EDGE_TOLERANCE_S) return null; // real sound after the silence
+  const end = lastStart + TRIM_KEEP_TAIL_S;
+  if (end >= duration - TRIM_EDGE_TOLERANCE_S) return null; // nothing meaningful to cut
+  return end;
+}
+
+function parseDuration(detectOutput: string): number | null {
+  const match = /Duration: (\d+):(\d+):(\d+\.\d+)/.exec(detectOutput);
+  if (match === null) return null;
+  return Number(match[1]) * 3600 + Number(match[2]) * 60 + Number(match[3]);
+}
+
+/** ffmpeg is optional — PATH first, then the usual Homebrew homes. Null means no trim. */
+function resolveFfmpeg(): string | null {
+  const found = Bun.which("ffmpeg");
+  if (found !== null) return found;
+  for (const candidate of ["/opt/homebrew/bin/ffmpeg", "/usr/local/bin/ffmpeg"]) {
+    if (existsSync(candidate)) return candidate;
+  }
+  return null;
+}
+
+/**
+ * Trim the trailing silence into a wav next to the mp3. Returns the file to play: the
+ * trimmed wav, or the original when ffmpeg is missing, fails, or finds nothing to cut —
+ * the sentence must still play; the gap is an annoyance and never worth a lost
+ * utterance. Runs inside prepare, so for a prefetched sentence the two passes hide
+ * behind the previous sentence's playback.
+ */
+async function trimEdgeSilence(input: string, output: string): Promise<string> {
+  const ffmpeg = resolveFfmpeg();
+  if (ffmpeg === null) return input;
+  try {
+    const detect = Bun.spawn([ffmpeg, ...silenceDetectArgs(input)], {
+      stdout: "ignore",
+      stderr: "pipe",
+    });
+    const [detectCode, detectOutput] = await Promise.all([
+      detect.exited,
+      new Response(detect.stderr).text(),
+    ]);
+    if (detectCode !== 0) return input;
+
+    const end = computeTrimEnd(detectOutput);
+    if (end === null) return input;
+
+    const trim = Bun.spawn([ffmpeg, ...atrimArgs(input, output, end)], {
+      stdout: "ignore",
+      stderr: "ignore",
+    });
+    if ((await trim.exited) !== 0) return input;
+    return existsSync(output) ? output : input;
+  } catch {
+    return input;
+  }
 }
 
 export async function resolveApiKey(options: {
@@ -120,8 +211,9 @@ export const elevenLabsEngine: SpeechEngine = {
     if (audio.byteLength === 0) throw new Error("ElevenLabs returned no audio");
 
     const dir = mkdtempSync(join(tmpdir(), "bobsay-"));
-    const file = join(dir, "speech.mp3");
-    writeFileSync(file, audio);
+    const raw = join(dir, "speech.mp3");
+    writeFileSync(raw, audio);
+    const file = await trimEdgeSilence(raw, join(dir, "speech.wav"));
     const cleanup = () => rmSync(dir, { recursive: true, force: true });
 
     return {

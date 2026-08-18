@@ -1,8 +1,11 @@
 import { describe, expect, test } from "bun:test";
 import { sayArgs } from "../../src/say/engines/say.ts";
 import {
+  atrimArgs,
   buildElevenLabsRequest,
+  computeTrimEnd,
   resolveApiKey,
+  silenceDetectArgs,
   DEFAULT_ELEVENLABS_MODEL,
 } from "../../src/say/engines/elevenlabs.ts";
 import { SYSTEM_VOICE } from "../../src/say/select.ts";
@@ -151,6 +154,55 @@ describe("elevenlabs engine — request", () => {
       modelId: "eleven_multilingual_v2",
     });
     expect(JSON.parse(init.body as string).model_id).toBe("eleven_multilingual_v2");
+  });
+});
+
+describe("elevenlabs engine — trailing-silence trim", () => {
+  // Verbatim shape of real ffmpeg silencedetect stderr (measured 2026-08-18: ElevenLabs
+  // left 1.12s of trailing silence, ended by a ~20ms codec-edge blip before EOF).
+  const detectOutput = [
+    "  Duration: 00:00:05.11, start: 0.025057, bitrate: 129 kb/s",
+    "[Parsed_silencedetect_0 @ 0x94f008e40] silence_start: 2.540771",
+    "[Parsed_silencedetect_0 @ 0x94f008e40] silence_end: 2.588027 | silence_duration: 0.0472562",
+    "[Parsed_silencedetect_0 @ 0x94f008e40] silence_start: 3.968481",
+    "[Parsed_silencedetect_0 @ 0x94f008e40] silence_end: 5.089342 | silence_duration: 1.120862",
+  ].join("\n");
+
+  test("cuts the dead tail but keeps a natural breath, ignoring the codec-edge blip", () => {
+    // Last silence starts at 3.968; keep 150ms of it. The 20ms blip after its end
+    // (5.089 vs EOF 5.11) is an artifact, not speech — it must not protect the tail.
+    expect(computeTrimEnd(detectOutput)).toBeCloseTo(3.968481 + 0.15, 5);
+  });
+
+  test("leaves the tail alone when real sound runs to the end", () => {
+    const speechToTheEnd = [
+      "  Duration: 00:00:05.11, start: 0.025057, bitrate: 129 kb/s",
+      "[x] silence_start: 2.5",
+      "[x] silence_end: 2.7 | silence_duration: 0.2",
+    ].join("\n");
+    expect(computeTrimEnd(speechToTheEnd)).toBeNull();
+  });
+
+  test("a tail already at natural length is not worth an ffmpeg pass", () => {
+    const shortTail = [
+      "  Duration: 00:00:04.00, start: 0.025057, bitrate: 129 kb/s",
+      "[x] silence_start: 3.85",
+      "[x] silence_end: 3.99 | silence_duration: 0.14",
+    ].join("\n");
+    expect(computeTrimEnd(shortTail)).toBeNull();
+  });
+
+  test("no silence, no duration — nothing to do", () => {
+    expect(computeTrimEnd("garbage with no markers")).toBeNull();
+  });
+
+  test("the two ffmpeg passes carry the right arguments", () => {
+    expect(silenceDetectArgs("/tmp/in.mp3").join(" ")).toBe(
+      "-hide_banner -i /tmp/in.mp3 -af silencedetect=noise=-45dB:d=0.1 -f null -",
+    );
+    expect(atrimArgs("/tmp/in.mp3", "/tmp/out.wav", 4.118).join(" ")).toBe(
+      "-y -hide_banner -loglevel error -i /tmp/in.mp3 -af atrim=end=4.118 /tmp/out.wav",
+    );
   });
 });
 
