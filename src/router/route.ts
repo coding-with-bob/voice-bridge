@@ -38,6 +38,8 @@ import {
 } from "./repair.ts";
 import { extractJson, type ModelCall } from "./model.ts";
 import { buildUserPrompt, SYSTEM_PROMPT } from "./prompt.ts";
+import { interruptionNote } from "./convention.ts";
+import { readLatestInterruption } from "../say/interruptions.ts";
 
 /** Own-tool sessions run without approval friction, per D10. */
 export const PERMISSION_MODE = "bypassPermissions";
@@ -146,6 +148,7 @@ async function routeUnderLock(
         permissionMode: PERMISSION_MODE,
         sessionModel: deps.config.session_model,
         sessionEffort: deps.config.session_effort,
+        interruptionNote: noteForInterrupted(decision, context),
       });
       executed = outcome.executed;
       targetSessionId = outcome.targetSessionId;
@@ -179,6 +182,17 @@ async function routeUnderLock(
             of_session_id: repair.sessionId,
             ...(repair.ofTs === undefined ? {} : { of_ts: repair.ofTs }),
             outcome: repair.outcome,
+          },
+        }),
+    // Recorded whenever the router saw one — including when it routed elsewhere anyway.
+    ...(context.interruption === null
+      ? {}
+      : {
+          interruption: {
+            ts: context.interruption.ts,
+            session_id: context.interruption.session_id,
+            answer_id: context.interruption.answer_id,
+            interrupted_text: context.interruption.interrupted_text,
           },
         }),
     reachback: reach.reachback,
@@ -262,6 +276,8 @@ async function gatherContext(
       homeDir: deps.config.home_dir,
       followupWindowMin: deps.config.followup_window_min,
       candidateWindowDays: deps.config.candidate_window_days,
+      // The barge-in, if any: freshness is context's to judge, not ours.
+      interruption: readLatestInterruption(deps.config.home_dir),
       now,
     }),
   };
@@ -431,6 +447,18 @@ function targetStatusAtDispatch(decision: RouterDecision, context: RoutingContex
     context.candidates.find((session) => session.id === decision.session_id) ??
     context.ledger_matches.find((session) => session.id === decision.session_id);
   return candidate?.status ?? "unknown";
+}
+
+/**
+ * The note goes to the session that was actually cut off, and only when this dispatch is
+ * going back to it. Routed elsewhere, the barge-in is none of that session's business —
+ * and a new session has no interrupted answer to be told about.
+ */
+function noteForInterrupted(decision: RouterDecision, context: RoutingContext): string | null {
+  const cut = context.interruption;
+  if (cut === null || decision.action !== "continue") return null;
+  if (cut.session_id !== decision.session_id) return null;
+  return interruptionNote(cut.interrupted_text);
 }
 
 /** The exchanges a correction may name: the ones that actually dispatched somewhere. */

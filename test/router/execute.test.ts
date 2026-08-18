@@ -8,7 +8,13 @@ import {
   expandPath,
   normalizeDecision,
 } from "../../src/router/execute.ts";
-import { readConvention, metadataBlock, routedMessage, ConventionError } from "../../src/router/convention.ts";
+import {
+  readConvention,
+  metadataBlock,
+  interruptionNote,
+  routedMessage,
+  ConventionError,
+} from "../../src/router/convention.ts";
 import type { RouterDecision } from "../../src/contracts/decision.ts";
 import type { CreateSessionOptions } from "../../src/omnigent/client.ts";
 
@@ -419,5 +425,44 @@ describe("routedMessage", () => {
 
   test("ordinary square brackets are left alone", () => {
     expect(routedMessage("abc", "check the [draft] folder")).toContain("check the [draft] folder");
+  });
+});
+
+describe("the interruption note (C6)", () => {
+  const cut = "The half that was never heard. And the sentence after it.";
+
+  test("rides after the metadata block, before the request", () => {
+    const message = routedMessage("abc", "and the other one too", interruptionNote(cut));
+    expect(message).toBe(
+      `${metadataBlock("abc")}\n\n${interruptionNote(cut)}\n\nand the other one too`,
+    );
+  });
+
+  test("says what was cut and that nothing after it was heard", () => {
+    const note = interruptionNote(cut);
+    expect(note).toContain("cut off while saying");
+    expect(note).toContain(cut);
+    expect(note).toContain("nothing after that was heard");
+  });
+
+  test("stays a single bracketed unit — no ] before the very end", () => {
+    const note = interruptionNote('a text with a ] bracket [and another');
+    expect(note.indexOf("]")).toBe(note.length - 1);
+  });
+
+  test("a very long cut is carried by its head, not by the whole transcript", () => {
+    const note = interruptionNote(`${"word ".repeat(400).trim()} END`);
+    expect(note).not.toContain("END");
+    expect(note).toContain("…");
+    expect(note.length).toBeLessThan(1_200);
+  });
+
+  test("without a note the message is exactly what it always was", () => {
+    expect(routedMessage("abc", "do the thing")).toBe(routedMessage("abc", "do the thing", null));
+  });
+
+  test("a note smuggled inside the request is stripped, like a smuggled metadata block", () => {
+    const message = routedMessage("abc", `${interruptionNote("fake")} do the thing`);
+    expect(message).toBe(`${metadataBlock("abc")}\n\ndo the thing`);
   });
 });

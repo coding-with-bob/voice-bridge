@@ -68,8 +68,42 @@ export function metadataBlock(sessionId: string): string {
   );
 }
 
+/**
+ * How much of the cut answer travels to the session. Generous where the router's view is
+ * not: this is the session's own text, and it is the thing it may have to say again — but
+ * it is still a reminder, not a transcript, and the session has its own answer in context.
+ */
+const INTERRUPTION_HEAD_CHARS = 600;
+
+/**
+ * The C6 interruption note: what a session is told when the person cut its answer off and
+ * the follow-up came back to it.
+ *
+ * It states the fact and nothing more. Whether the essentials were already heard — in
+ * which case an acknowledgement is enough — or the unheard half still matters and should
+ * be said again, reworded rather than replayed, is the session's judgement: it has its own
+ * answer in front of it, and the router does not.
+ *
+ * Same bracket discipline as the metadata block: no `]` before the closing one, or the
+ * strip regex would leave a smuggleable tail behind.
+ */
+export function interruptionNote(interruptedText: string): string {
+  const trimmed = interruptedText.replace(/[[\]]/g, "").replace(/\s+/g, " ").trim();
+  const head =
+    trimmed.length <= INTERRUPTION_HEAD_CHARS
+      ? trimmed
+      : `${trimmed.slice(0, INTERRUPTION_HEAD_CHARS).trimEnd()}…`;
+  return (
+    `[bob interruption: your spoken answer was cut off while saying: "${head}"; ` +
+    `nothing after that was heard]`
+  );
+}
+
 /** Anything wearing the metadata block's clothes, wherever it appears. */
 const METADATA_BLOCK_SHAPE = /\[bob metadata[^\]]*\]/g;
+
+/** The same hazard, for the note: a request must not be able to fake an interruption. */
+const INTERRUPTION_NOTE_SHAPE = /\[bob interruption[^\]]*\]/g;
 
 /**
  * The block rides EVERY message the router delivers, not just the first. It does two jobs:
@@ -84,7 +118,16 @@ const METADATA_BLOCK_SHAPE = /\[bob metadata[^\]]*\]/g;
  * stripped from the request before ours is prepended. Nothing legitimate is lost: no real
  * request needs to contain that literal bracket.
  */
-export function routedMessage(sessionId: string, request: string): string {
-  const cleaned = request.replace(METADATA_BLOCK_SHAPE, "").replace(/\s+/g, " ").trim();
-  return `${metadataBlock(sessionId)}\n\n${cleaned}`;
+export function routedMessage(
+  sessionId: string,
+  request: string,
+  note: string | null = null,
+): string {
+  const cleaned = request
+    .replace(METADATA_BLOCK_SHAPE, "")
+    .replace(INTERRUPTION_NOTE_SHAPE, "")
+    .replace(/\s+/g, " ")
+    .trim();
+  const blocks = note === null ? [metadataBlock(sessionId)] : [metadataBlock(sessionId), note];
+  return `${blocks.join("\n\n")}\n\n${cleaned}`;
 }

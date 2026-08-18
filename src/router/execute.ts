@@ -128,6 +128,12 @@ export interface ExecuteDeps {
   sessionModel: string;
   /** C3 `session_effort`, for the same reason. */
   sessionEffort: string;
+  /**
+   * The C6 interruption note, when this dispatch goes back to a session whose answer was
+   * cut off. Only a `continue` can carry one — a session created by this decision has no
+   * interrupted answer of its own.
+   */
+  interruptionNote?: string | null;
 }
 
 export interface ExecutionOutcome {
@@ -150,7 +156,7 @@ export async function executeDecision(
       // question answered in markdown, in silence).
       const posted = await deps.client.postMessage(
         decision.session_id,
-        routedMessage(decision.session_id, decision.request),
+        routedMessage(decision.session_id, decision.request, deps.interruptionNote ?? null),
       );
       return {
         targetSessionId: decision.session_id,

@@ -3,8 +3,10 @@ import { mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from "node
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { route, RouteError, type RouteDeps } from "../../src/router/route.ts";
-import { metadataBlock } from "../../src/router/convention.ts";
+import { interruptionNote, metadataBlock } from "../../src/router/convention.ts";
 import { readDecisionEntries } from "../../src/router/decision-log.ts";
+import { appendInterruption } from "../../src/say/interruptions.ts";
+import type { InterruptionRecord } from "../../src/contracts/playback.ts";
 import { pathsFor } from "../../src/config/load.ts";
 import { DEFAULT_CONFIG } from "../../src/contracts/config.ts";
 import type { PoolSession } from "../../src/omnigent/parse.ts";
@@ -364,5 +366,82 @@ describe("route — the spoken ledger feeds the context", () => {
 
     expect(seenPrompt).toContain("The subtitles are done.");
     expect(seenPrompt).toContain("MOST RECENT INTERACTION: session s1");
+  });
+});
+
+describe("route — under a barge-in", () => {
+  const cutAt = (minutes: number) =>
+    new Date(NOW.getTime() - minutes * 60_000).toISOString();
+
+  function recordCut(overrides: Partial<InterruptionRecord> = {}): void {
+    appendInterruption(home, {
+      ts: cutAt(1),
+      session_id: "s1",
+      answer_id: "a-1",
+      interrupted_text: "The half that was never heard.",
+      unplayed_texts: [],
+      ...overrides,
+    });
+  }
+
+  test("a continue to the interrupted session carries the note, after the metadata block", async () => {
+    recordCut();
+    const { deps, messages } = harness();
+
+    await route("and the other one too", deps);
+
+    expect(messages).toHaveLength(1);
+    expect(messages[0]!.text).toBe(
+      `${metadataBlock("s1")}\n\n${interruptionNote("The half that was never heard.")}\n\ndo it`,
+    );
+  });
+
+  test("a continue elsewhere carries no note — only the cut session is told it was cut", async () => {
+    recordCut({ session_id: "s2" });
+    const base = harness();
+    const { deps, messages } = harness({
+      client: {
+        ...base.deps.client,
+        postMessage: base.deps.client.postMessage,
+        listSessions: async () => [session({ id: "s1" }), session({ id: "s2" })],
+      },
+    });
+
+    await route("something else entirely", deps);
+
+    // The dispatch went to s1 while s2 was the cut session: no note anywhere.
+    expect(base.messages[0]!.text).toBe(`${metadataBlock("s1")}\n\ndo it`);
+    expect(messages).toEqual([]);
+  });
+
+  test("the decision log records the barge-in the router saw, without the payload", async () => {
+    recordCut();
+    const { deps } = harness();
+
+    await route("and the other one too", deps);
+
+    const entry = readDecisionEntries(deps.paths.decisionLog, { limit: 1 })[0]!;
+    expect(entry.interruption).toEqual({
+      ts: cutAt(1),
+      session_id: "s1",
+      answer_id: "a-1",
+      interrupted_text: "The half that was never heard.",
+    });
+  });
+
+  test("a stale barge-in reaches neither the message nor the log", async () => {
+    recordCut({ ts: cutAt(120) });
+    const { deps, messages } = harness();
+
+    await route("and the other one too", deps);
+
+    expect(messages[0]!.text).toBe(`${metadataBlock("s1")}\n\ndo it`);
+    expect(readDecisionEntries(deps.paths.decisionLog, { limit: 1 })[0]!.interruption).toBeUndefined();
+  });
+
+  test("no barge-in at all leaves the routed message exactly as it was", async () => {
+    const { deps, messages } = harness();
+    await route("do it", deps);
+    expect(messages[0]!.text).toBe(`${metadataBlock("s1")}\n\ndo it`);
   });
 });
