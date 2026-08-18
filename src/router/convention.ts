@@ -18,6 +18,22 @@ export class ConventionError extends Error {
   override name = "ConventionError";
 }
 
+/**
+ * Omnigent refuses a `terminal_launch_args` entry over 4,096 characters, and the convention
+ * travels as one — `--append-system-prompt`. Going over does not degrade anything gracefully:
+ * every `createSession` fails with a 400, the router falls back, and the person hears "I did
+ * not understand" for a request that was perfectly clear. It happened on 2026-08-18, when a
+ * C6 amendment pushed the text to 4,646 characters.
+ */
+export const MAX_CONVENTION_CHARS = 4_096;
+
+/**
+ * The length we hold ourselves to, leaving room to add a sentence without discovering the
+ * ceiling in production. Crossing it is a design decision — trim, or find another channel —
+ * not something to notice from a failed spawn.
+ */
+export const CONVENTION_BUDGET_CHARS = 4_000;
+
 export function readConvention(conventionFile: string): string {
   if (!existsSync(conventionFile)) {
     throw new ConventionError(
@@ -95,7 +111,8 @@ export function interruptionNote(interruptedText: string): string {
       : `${trimmed.slice(0, INTERRUPTION_HEAD_CHARS).trimEnd()}…`;
   return (
     `[bob interruption: your spoken answer was cut off while saying: "${head}"; ` +
-    `nothing after that was heard]`
+    `nothing after that was heard. If the essentials had already been said, just answer what ` +
+    `comes next; if the unheard part still matters, say it again briefly, reworded]`
   );
 }
 

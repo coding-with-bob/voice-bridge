@@ -6,7 +6,11 @@
  * command that fixes it.
  */
 import { isLocalhostOnly } from "./bind.ts";
-import { readConvention } from "../router/convention.ts";
+import {
+  readConvention,
+  CONVENTION_BUDGET_CHARS,
+  MAX_CONVENTION_CHARS,
+} from "../router/convention.ts";
 import { claudeLauncher, extractJson, type ModelCall } from "../router/model.ts";
 import { CLAUDE_NATIVE_HARNESS, type OmnigentClient } from "../omnigent/client.ts";
 
@@ -108,10 +112,25 @@ function configCheck(deps: DoctorDeps): CheckResult {
 function conventionCheck(deps: DoctorDeps): CheckResult {
   try {
     const convention = readConvention(deps.conventionFile);
+    // The convention travels as one terminal_launch_args entry, and Omnigent rejects an
+    // entry past MAX_CONVENTION_CHARS — with a 400 on every createSession, which reaches
+    // the person as "I did not understand" (2026-08-18). Doctor says it plainly instead.
+    if (convention.length > MAX_CONVENTION_CHARS) {
+      return {
+        name: "speech",
+        ok: false,
+        detail:
+          `the C6 convention is ${convention.length} characters — past the ` +
+          `${MAX_CONVENTION_CHARS}-character launch-arg limit, so no session can be created`,
+        hint: `Trim the C6 block in ${deps.conventionFile} to ${CONVENTION_BUDGET_CHARS} characters or less.`,
+      };
+    }
     return {
       name: "speech",
       ok: true,
-      detail: `speak-on-finish convention loaded (${convention.length} characters)`,
+      detail:
+        `speak-on-finish convention loaded (${convention.length} characters` +
+        `${convention.length > CONVENTION_BUDGET_CHARS ? `, over the ${CONVENTION_BUDGET_CHARS} budget` : ""})`,
     };
   } catch (error) {
     return {

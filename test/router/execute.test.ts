@@ -14,6 +14,8 @@ import {
   interruptionNote,
   routedMessage,
   ConventionError,
+  CONVENTION_BUDGET_CHARS,
+  MAX_CONVENTION_CHARS,
 } from "../../src/router/convention.ts";
 import type { RouterDecision } from "../../src/contracts/decision.ts";
 import type { CreateSessionOptions } from "../../src/omnigent/client.ts";
@@ -354,6 +356,20 @@ describe("readConvention", () => {
   });
 
   /**
+   * Regression (2026-08-18): a C6 amendment took the convention to 4,646 characters, past
+   * Omnigent's 4,096-character limit on a `terminal_launch_args` entry. Nothing warned —
+   * every `createSession` came back 400, the router fell back, and a perfectly clear request
+   * was answered with "I did not understand". The budget below fails here instead, while the
+   * sentence being added is still in someone's editor.
+   */
+  test("the convention fits the launch-arg budget it travels in", () => {
+    const convention = readConvention(join(homedir(), "bob", "CLAUDE.md"));
+    expect(MAX_CONVENTION_CHARS).toBeLessThanOrEqual(4_096);
+    expect(CONVENTION_BUDGET_CHARS).toBeLessThan(MAX_CONVENTION_CHARS);
+    expect(convention.length).toBeLessThanOrEqual(CONVENTION_BUDGET_CHARS);
+  });
+
+  /**
    * The convention tells the session what the metadata block looks like; the code produces
    * it. Nothing but this test keeps the two from drifting apart, and the drift would be
    * silent: sessions would be told to expect a block shaped unlike the one they receive.
@@ -368,12 +384,23 @@ describe("readConvention", () => {
    * cut answer looks like when it comes back to it, and a session that has been told to
    * expect different words would read a real note as content.
    */
-  test("the convention describes the interruption note the code actually sends", () => {
+  test("the convention names the note by the marker the code actually emits", () => {
     const convention = readConvention(join(homedir(), "bob", "CLAUDE.md"));
-    const note = interruptionNote("…");
-    // Compared by its fixed parts: the quoted middle is the answer's own text.
-    expect(convention).toContain(note.slice(0, note.indexOf('"')));
-    expect(convention).toContain("nothing after that was heard]");
+    expect(interruptionNote("…").startsWith("[bob interruption:")).toBe(true);
+    expect(convention).toContain("[bob interruption:");
+  });
+
+  /**
+   * What to do about a cut answer rides inside the note, not only in the convention — the
+   * same reasoning as the speak rule (2026-08-16): launch args freeze the convention at
+   * spawn, so a long-lived session never learns an amendment, while the note reaches every
+   * session on every message. It is also what keeps the convention inside its launch-arg
+   * budget (2026-08-18).
+   */
+  test("the note itself carries the instruction, so a stale session gets it too", () => {
+    const note = interruptionNote("the tail that went unheard");
+    expect(note).toContain("nothing after that was heard");
+    expect(note).toContain("say it again briefly, reworded");
   });
 });
 
