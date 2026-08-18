@@ -22,6 +22,7 @@ import {
 } from "node:fs";
 import { basename, dirname, join } from "node:path";
 import { parseTicketBody, type TicketBody } from "../contracts/playback.ts";
+import { registerCleanup } from "./cleanup.ts";
 
 export class LockTimeoutError extends Error {
   override name = "LockTimeoutError";
@@ -72,41 +73,6 @@ const HOLDER_MARKER = "holder.lock";
 
 /** Distinguishes tickets taken within the same millisecond by the same process. */
 let sequence = 0;
-
-/**
- * Tickets this process is holding right now.
- *
- * Stale pruning is the safety net for a process that dies without warning, but it is a
- * 60-second net: interrupt a `bobsay` mid-sentence and the next one waits out the whole
- * minute in silence, with nothing to explain itself. A signal we can catch is not an
- * unwarned death, so we give the ticket back on the way out.
- */
-const heldTickets = new Set<string>();
-let cleanupInstalled = false;
-
-function installCleanup(): void {
-  if (cleanupInstalled) return;
-  cleanupInstalled = true;
-
-  const releaseAll = (): void => {
-    for (const path of heldTickets) {
-      releaseMarker(dirname(path), basename(path));
-      remove(path);
-    }
-    heldTickets.clear();
-  };
-
-  process.on("exit", releaseAll);
-  // Replacing the default handler means the exit is now ours to perform.
-  process.on("SIGINT", () => {
-    releaseAll();
-    process.exit(130);
-  });
-  process.on("SIGTERM", () => {
-    releaseAll();
-    process.exit(143);
-  });
-}
 
 export async function acquireLock(lockDir: string, options: LockOptions = {}): Promise<LockHandle> {
   const staleMs = options.staleMs ?? DEFAULTS.staleMs;
@@ -246,8 +212,18 @@ function isAbandoned(path: string, cutoff: number): boolean {
 function startHolding(ticketPath: string, staleMs: number): LockHandle {
   const heartbeat = setInterval(() => touch(ticketPath), Math.max(10, Math.floor(staleMs / 3)));
   heartbeat.unref?.();
-  heldTickets.add(ticketPath);
-  installCleanup();
+
+  /**
+   * Stale pruning is the safety net for a process that dies without warning, but it is a
+   * 60-second net: interrupt a `bobsay` mid-sentence and the next one waits out the whole
+   * minute in silence, with nothing to explain itself. A signal we can catch is not an
+   * unwarned death, so we give the ticket back on the way out.
+   */
+  const giveBack = (): void => {
+    releaseMarker(dirname(ticketPath), basename(ticketPath));
+    remove(ticketPath);
+  };
+  const unregister = registerCleanup(giveBack);
 
   let released = false;
   return {
@@ -255,9 +231,8 @@ function startHolding(ticketPath: string, staleMs: number): LockHandle {
       if (released) return;
       released = true;
       clearInterval(heartbeat);
-      heldTickets.delete(ticketPath);
-      releaseMarker(dirname(ticketPath), basename(ticketPath));
-      remove(ticketPath);
+      unregister();
+      giveBack();
     },
     rewriteBody(body: TicketBody) {
       if (released) return;
