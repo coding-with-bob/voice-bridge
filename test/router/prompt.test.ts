@@ -21,6 +21,7 @@ const context = (overrides: Partial<RoutingContext> = {}): RoutingContext => ({
     minutes_ago: 4,
     within_followup_window: true,
   },
+  interruption: null,
   ledger_matches: [],
   peeks: [],
   recent_exchanges: [],
@@ -334,5 +335,43 @@ describe("buildUserPrompt", () => {
     expect(prompt).toContain("(has not spoken)");
     expect(prompt).toContain("(untitled)");
     expect(prompt).toContain("status: waiting");
+  });
+});
+
+describe("the barge-in bias", () => {
+  const cut = (text: string) => ({
+    ts: "2026-08-15T11:59:00.000Z",
+    session_id: "s1",
+    answer_id: "a-1",
+    interrupted_text: text,
+    unplayed_texts: [],
+  });
+
+  test("names the session, the moment, and what it was saying when it was cut", () => {
+    const prompt = buildUserPrompt(
+      context({ interruption: cut("The second half of the answer was never heard.") }),
+      "and what about the other one",
+      NOW,
+    );
+    expect(prompt).toContain("BARGE-IN");
+    expect(prompt).toContain("s1");
+    expect(prompt).toContain("The second half of the answer was never heard.");
+  });
+
+  test("tells the router what to do with it — prefer that session, but not blindly", () => {
+    const prompt = buildUserPrompt(context({ interruption: cut("…") }), "x", NOW);
+    expect(prompt).toContain("continue");
+    expect(prompt.toLowerCase()).toContain("unless");
+  });
+
+  test("a long cut is shown by its head — the router needs the topic, not the transcript", () => {
+    const long = `${"word ".repeat(200).trim()} END`;
+    const prompt = buildUserPrompt(context({ interruption: cut(long) }), "x", NOW);
+    expect(prompt).not.toContain("END");
+    expect(prompt).toContain("…");
+  });
+
+  test("no barge-in, no section — the ordinary utterance sees nothing about it", () => {
+    expect(buildUserPrompt(context(), "x", NOW)).not.toContain("BARGE-IN");
   });
 });

@@ -18,7 +18,14 @@ import type { RoutingContext } from "./context.ts";
  * Bumped whenever the wording changes. The live regression run records it next to the model
  * id, so a table result can be attributed to a specific prompt rather than to "the router".
  */
-export const PROMPT_VERSION = "2026-08-17.1";
+export const PROMPT_VERSION = "2026-08-18.1";
+
+/**
+ * How much of the cut answer the router is shown. It needs enough to recognise what the
+ * conversation was about; the session that receives the follow-up gets the fuller text in
+ * its own note, because it is the one that may have to say the unheard half again.
+ */
+const BARGE_IN_HEAD_CHARS = 240;
 
 export const SYSTEM_PROMPT = `You are the router of a voice bridge. A person speaks a request out loud; your only job is to decide WHERE it goes.
 
@@ -65,6 +72,7 @@ export function buildUserPrompt(context: RoutingContext, utterance: string, now:
     `NOW: ${now.toISOString()}`,
     `FOLLOW-UP WINDOW: ${context.followup_window_min} minutes`,
     `MOST RECENT INTERACTION: ${describeMostRecent(context)}`,
+    ...bargeInSection(context),
     `HOME DIRECTORY: ${context.home_dir}`,
     ...exchangesSection(context),
     "",
@@ -98,6 +106,31 @@ function describeMostRecent(context: RoutingContext): string {
     : "outside the follow-up window";
   const kind = recent.kind === "spoken" ? "it spoke last" : "it was messaged last";
   return `session ${recent.session_id}, ${recent.minutes_ago} minutes ago (${kind}), ${window}`;
+}
+
+/**
+ * The barge-in fact and the one instruction that goes with it.
+ *
+ * Stated as a fact rather than folded into the deliberation order on purpose: the person
+ * cut an answer off and then spoke, which makes that session the overwhelmingly likely
+ * target — but "overwhelmingly likely" is not "certain", and someone may well interrupt a
+ * long read precisely because something else came up.
+ */
+function bargeInSection(context: RoutingContext): string[] {
+  const cut = context.interruption;
+  if (cut === null) return [];
+  return [
+    `BARGE-IN: the previous utterance interrupted session ${cut.session_id} mid-answer, ` +
+      `while it was saying: "${head(cut.interrupted_text, BARGE_IN_HEAD_CHARS)}"`,
+    "  Strongly prefer to continue that session — the utterance you are routing now is most " +
+      "likely what the person interrupted it to say — unless the utterance clearly addresses " +
+      "something else, in which case route it where it belongs.",
+  ];
+}
+
+function head(text: string, maxChars: number): string {
+  const trimmed = text.trim();
+  return trimmed.length <= maxChars ? trimmed : `${trimmed.slice(0, maxChars).trimEnd()}…`;
 }
 
 function describeCandidate(candidate: {

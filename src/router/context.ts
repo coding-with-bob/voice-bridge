@@ -14,6 +14,7 @@ import type { PoolSession, SessionStatus } from "../omnigent/parse.ts";
 import type { SpokenLogEntry } from "../contracts/spoken-log.ts";
 import type { LedgerHit } from "./ledger.ts";
 import type { DecisionLogEntry } from "../contracts/decision.ts";
+import type { InterruptionRecord } from "../contracts/playback.ts";
 import { buildExchanges, type Exchange } from "./exchanges.ts";
 import type { DispatchEvent } from "./decision-log.ts";
 
@@ -63,6 +64,11 @@ export interface RoutingContext {
   /** The dialogue so far, derived from the two event logs — never stored anywhere. */
   recent_exchanges: Exchange[];
   most_recent: RecentInteraction | null;
+  /**
+   * The barge-in the *previous* utterance performed, when it is still fresh enough to
+   * bias this one (C7). Null in the ordinary case — most utterances interrupt nothing.
+   */
+  interruption: InterruptionRecord | null;
   /** Absolute root the project names hang off. Without it the model has to guess a prefix. */
   projects_root: string;
   /** Directory names under the root — the placement vocabulary, so the model cannot invent a path. */
@@ -91,6 +97,8 @@ export interface ContextInput {
   sessionModel: string;
   followupWindowMin: number;
   candidateWindowDays: number;
+  /** The latest C7 record on disk, if any; freshness is judged here, not by the caller. */
+  interruption?: InterruptionRecord | null;
   now: Date;
 }
 
@@ -113,7 +121,9 @@ export function buildContext(input: ContextInput): RoutingContext {
       spoken_tail: tails.get(session.id) ?? [],
     }));
 
-  const mostRecent = deriveMostRecent(input, new Set(candidates.map((c) => c.id)));
+  const addressable = new Set(candidates.map((c) => c.id));
+  const mostRecent = deriveMostRecent(input, addressable);
+  const interruption = freshInterruption(input, addressable);
 
   return {
     candidates,
@@ -125,6 +135,7 @@ export function buildContext(input: ContextInput): RoutingContext {
       now: input.now,
     }),
     most_recent: mostRecent,
+    interruption,
     projects_root: input.projectsRoot,
     project_dirs: input.projectDirs,
     home_dir: input.homeDir,
@@ -132,8 +143,40 @@ export function buildContext(input: ContextInput): RoutingContext {
     session_model: input.sessionModel,
     followup_window_min: input.followupWindowMin,
     candidate_window_days: input.candidateWindowDays,
-    digest: describeDigest(candidates, mostRecent),
+    digest: describeDigest(candidates, mostRecent, interruption),
   };
+}
+
+/**
+ * A barge-in biases the *next* utterance and only for as long as a follow-up would be one.
+ *
+ * Three ways it stops being offered, each for its own reason: an hour-old cut must not
+ * haunt an unrelated request (the follow-up window); a dispatch after the cut means some
+ * utterance has already been routed under this bias and consumed it; and a session that
+ * has left the pool cannot be continued, so biasing towards it would only invite a
+ * decision that cannot execute. A sessionless cut — an interrupted router ack — was never
+ * an event worth routing on in the first place.
+ */
+function freshInterruption(
+  input: ContextInput,
+  addressable: Set<string>,
+): InterruptionRecord | null {
+  const record = input.interruption ?? null;
+  if (record === null || record.session_id === null) return null;
+  if (!addressable.has(record.session_id)) return null;
+
+  const at = Date.parse(record.ts);
+  if (!Number.isFinite(at)) return null;
+  const minutesAgo = (input.now.getTime() - at) / 60_000;
+  if (minutesAgo < 0 || minutesAgo > input.followupWindowMin) return null;
+
+  const latestDispatch = input.dispatches
+    .map((dispatch) => Date.parse(dispatch.ts))
+    .filter((ts) => Number.isFinite(ts))
+    .sort((left, right) => right - left)[0];
+  if (latestDispatch !== undefined && latestDispatch >= at) return null;
+
+  return record;
 }
 
 function spokenTails(entries: SpokenLogEntry[]): Map<string, string[]> {
@@ -178,13 +221,15 @@ function deriveMostRecent(input: ContextInput, addressable: Set<string>): Recent
 function describeDigest(
   candidates: CandidateSession[],
   mostRecent: RecentInteraction | null,
+  interruption: InterruptionRecord | null,
 ): string {
   const recent =
     mostRecent === null
       ? "no recent interaction"
       : `most recent ${mostRecent.session_id} ${mostRecent.minutes_ago}m ago (${mostRecent.kind}` +
         `${mostRecent.within_followup_window ? ", in window" : ", out of window"})`;
-  return `${candidates.length} candidates; ${recent}`;
+  const cut = interruption === null ? "" : `; barge-in on ${interruption.session_id}`;
+  return `${candidates.length} candidates; ${recent}${cut}`;
 }
 
 /** Every session the model may legitimately address: the window plus any reach-back matches. */

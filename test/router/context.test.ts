@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { buildContext, type ContextInput } from "../../src/router/context.ts";
 import type { PoolSession } from "../../src/omnigent/parse.ts";
 import type { SpokenLogEntry } from "../../src/contracts/spoken-log.ts";
+import type { InterruptionRecord } from "../../src/contracts/playback.ts";
 
 const NOW = new Date("2026-08-15T12:00:00.000Z");
 const minutesAgo = (minutes: number) => Math.floor(NOW.getTime() / 1000) - minutes * 60;
@@ -183,6 +184,81 @@ describe("most recent interaction — derived, never stored", () => {
 
   test("no history at all means no most-recent interaction", () => {
     expect(buildContext(input({ sessions: [session({ id: "s1" })] })).most_recent).toBeNull();
+  });
+});
+
+describe("the barge-in bias is only offered while it is fresh", () => {
+  const interruption = (minutes: number, sessionId: string | null = "s1"): InterruptionRecord => ({
+    ts: new Date(NOW.getTime() - minutes * 60_000).toISOString(),
+    session_id: sessionId,
+    answer_id: "a-1",
+    interrupted_text: "The half that was never heard.",
+    unplayed_texts: [],
+  });
+
+  const dispatch = (session_id: string, minutes: number) => ({
+    ts: new Date(NOW.getTime() - minutes * 60_000).toISOString(),
+    session_id,
+  });
+
+  test("a recent cut to an addressable session is offered", () => {
+    const context = buildContext(
+      input({ sessions: [session({ id: "s1" })], interruption: interruption(1) }),
+    );
+    expect(context.interruption?.interrupted_text).toBe("The half that was never heard.");
+    expect(context.digest).toContain("barge-in");
+  });
+
+  test("an hour-old barge-in must not haunt an unrelated request", () => {
+    const context = buildContext(
+      input({
+        sessions: [session({ id: "s1" })],
+        followupWindowMin: 30,
+        interruption: interruption(60),
+      }),
+    );
+    expect(context.interruption).toBeNull();
+    expect(context.digest).not.toContain("barge-in");
+  });
+
+  test("a dispatch after the cut has already consumed it — the bias is for the next utterance", () => {
+    const context = buildContext(
+      input({
+        sessions: [session({ id: "s1" })],
+        interruption: interruption(5),
+        dispatches: [dispatch("s1", 2)],
+      }),
+    );
+    expect(context.interruption).toBeNull();
+  });
+
+  test("a dispatch from before the cut leaves the bias standing", () => {
+    const context = buildContext(
+      input({
+        sessions: [session({ id: "s1" })],
+        interruption: interruption(2),
+        dispatches: [dispatch("s1", 9)],
+      }),
+    );
+    expect(context.interruption).not.toBeNull();
+  });
+
+  test("a cut to a session that has left the pool is not offered — it cannot be addressed", () => {
+    const context = buildContext(
+      input({ sessions: [session({ id: "s2" })], interruption: interruption(1, "s1") }),
+    );
+    expect(context.interruption).toBeNull();
+  });
+
+  test("a sessionless cut — an interrupted router ack — biases nothing", () => {
+    const context = buildContext(
+      input({ sessions: [session({ id: "s1" })], interruption: interruption(1, null) }),
+    );
+    expect(context.interruption).toBeNull();
+  });
+
+  test("no interruption at all is the ordinary case", () => {
+    expect(buildContext(input({ sessions: [session({ id: "s1" })] })).interruption).toBeNull();
   });
 });
 
