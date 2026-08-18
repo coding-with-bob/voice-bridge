@@ -362,6 +362,19 @@ describe("readConvention", () => {
     const convention = readConvention(join(homedir(), "bob", "CLAUDE.md"));
     expect(convention).toContain(metadataBlock("<id>"));
   });
+
+  /**
+   * The same drift hazard for the interruption note: the convention tells a session what a
+   * cut answer looks like when it comes back to it, and a session that has been told to
+   * expect different words would read a real note as content.
+   */
+  test("the convention describes the interruption note the code actually sends", () => {
+    const convention = readConvention(join(homedir(), "bob", "CLAUDE.md"));
+    const note = interruptionNote("…");
+    // Compared by its fixed parts: the quoted middle is the answer's own text.
+    expect(convention).toContain(note.slice(0, note.indexOf('"')));
+    expect(convention).toContain("nothing after that was heard]");
+  });
 });
 
 describe("routedMessage", () => {
