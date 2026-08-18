@@ -35,6 +35,14 @@ export const InterruptionRecordSchema = z.object({
 });
 export type InterruptionRecord = z.infer<typeof InterruptionRecordSchema>;
 
+/**
+ * What a routing decision records about the barge-in it was made under (C5): the record
+ * without its payload. The unplayed chunks are evidence for the session, not for the
+ * routing forensics — a digest, not a copy.
+ */
+export const InterruptionDigestSchema = InterruptionRecordSchema.omit({ unplayed_texts: true });
+export type InterruptionDigest = z.infer<typeof InterruptionDigestSchema>;
+
 /** While a non-expired marker exists, only pause-exempt tickets may hold the lock. */
 export const PauseMarkerSchema = z.object({
   ts: z.iso.datetime(),

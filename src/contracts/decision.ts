@@ -12,6 +12,7 @@
  * `fallback: true`. Never a crash, never a guess.
  */
 import { z } from "zod";
+import { InterruptionDigestSchema } from "./playback.ts";
 
 /** Tier-3 peek trigger: the model is torn between these sessions. */
 export const CandidateSchema = z.object({
@@ -200,6 +201,12 @@ export const DecisionLogEntrySchema = z.object({
       ]),
     })
     .optional(),
+  /**
+   * The barge-in the router saw when it decided (C7). Recorded whenever a fresh record was
+   * in the context — including when the model routed elsewhere anyway, because "the bias
+   * was there and it went somewhere else" is exactly what a later audit needs to see.
+   */
+  interruption: InterruptionDigestSchema.optional(),
   /** `continue` to a session inactive beyond the candidate window. */
   reachback: z.boolean(),
   /** Why that session: the model's own reason, or the ledger query that surfaced it. */
