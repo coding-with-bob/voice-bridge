@@ -6,7 +6,10 @@
 # nothing may speak while you talk and while the router decides, then the ack plays, and
 # only afterwards does the queued message from the other session.
 #
-# Everything it starts is plain `bobsay`; no Omnigent session is touched.
+# Everything it starts is plain `bobsay`; no Omnigent session is touched. That also means
+# the routing bias is NOT exercised here: the session ids below are made up, so the router
+# correctly refuses to be biased toward a session it cannot address. What this script tests
+# is the quiet window — the cut, the silence, the ack, and the queue flowing afterwards.
 
 set -uo pipefail
 cd "$(dirname "$0")/.." || exit 1
