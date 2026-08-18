@@ -18,7 +18,7 @@ import type { RoutingContext } from "./context.ts";
  * Bumped whenever the wording changes. The live regression run records it next to the model
  * id, so a table result can be attributed to a specific prompt rather than to "the router".
  */
-export const PROMPT_VERSION = "2026-08-18.1";
+export const PROMPT_VERSION = "2026-08-18.2";
 
 /**
  * How much of the cut answer the router is shown. It needs enough to recognise what the
@@ -40,7 +40,7 @@ Allowed shapes:
 {"action":"clarify","question":"<one short spoken question>"}
 {"action":"lookup_ledger","query":"<a few distinctive words>"}
 
-"corrects" names an exchange id from RECENT EXCHANGES — leave the key out entirely when this decision corrects nothing.
+"corrects" names an exchange id from RECENT EXCHANGES — leave the key out entirely when this decision corrects nothing. Only an exchange that actually reached a session has an id; a clarify has none, because there is nothing there to undo. Asking again after a clarify — repeated, rephrased, or narrowed — is a fresh request, never a correction: route it on its own merits.
 
 Any of the first three may also carry "candidates":[{"session_id":"…","reason":"…"}] — use it when you are genuinely torn between two sessions and want to see how their conversations actually ended before committing.
 
@@ -151,12 +151,23 @@ function describeCandidate(candidate: {
   return `${header}\n${tail}`;
 }
 
-/** The dialogue so far, as linked exchanges — what was asked, where it went, what came back. */
+/**
+ * The dialogue so far, as linked exchanges — what was asked, where it went, what came back.
+ *
+ * Only an exchange that actually reached a session carries an id. An id is an address, and
+ * the executability check accepts exactly these; offering one for a clarify would be
+ * offering an address the contract rejects — the mistake this module avoids everywhere else.
+ * It is not a theoretical tidiness: a request repeated after a clarify looks like a
+ * correction of it, so the router named the clarify's id, the check refused it, the fallback
+ * wrote *another* clarify, and the next attempt looked more like a correction still. Three
+ * consecutive routes died in that loop on 2026-08-18. A clarify with no id cannot be named.
+ */
 function exchangesSection(context: RoutingContext): string[] {
   if (context.recent_exchanges.length === 0) return [];
   return [
     "",
-    "RECENT EXCHANGES (what was asked and what came back, oldest first; the [xN] ids are what \"corrects\" refers to):",
+    'RECENT EXCHANGES (what was asked and what came back, oldest first; the [xN] ids are what "corrects" refers to —',
+    "an exchange that reached no session has no id and cannot be corrected, because there is nothing to undo):",
     context.recent_exchanges
       .map((exchange) => {
         const target =
@@ -164,7 +175,8 @@ function exchangesSection(context: RoutingContext): string[] {
             ? "clarify"
             : `${exchange.action} ${exchange.target_session_id ?? "(not executed)"}`;
         const reply = exchange.reply === null ? "(no spoken reply yet)" : `"${exchange.reply}"`;
-        return `- [${exchange.id}] ${exchange.minutes_ago}m ago: "${exchange.utterance}" → ${target} → ${reply}`;
+        const label = exchange.target_session_id === null ? "[no id]" : `[${exchange.id}]`;
+        return `- ${label} ${exchange.minutes_ago}m ago: "${exchange.utterance}" → ${target} → ${reply}`;
       })
       .join("\n"),
   ];

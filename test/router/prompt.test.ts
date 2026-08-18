@@ -232,12 +232,40 @@ describe("buildUserPrompt", () => {
       NOW,
     );
     expect(prompt).toContain("RECENT EXCHANGES");
-    // The ids are the correction vocabulary — rendered on every line, explained in the header.
+    // The ids are the correction vocabulary, and they are offered only where they can be used.
     expect(prompt).toContain('the [xN] ids are what "corrects" refers to');
     expect(prompt).toContain('[x1] 23m ago: "mi volt a legutolsó sorozat?" → continue sess-tv → "A Star Trek S04E04');
-    expect(prompt).toContain("[x2] 2m ago:");
     expect(prompt).toContain('→ clarify → "Melyikre gondolsz?"');
     expect(prompt.indexOf("legutolsó sorozat")).toBeLessThan(prompt.indexOf("Hiabob"));
+  });
+
+  /**
+   * Regression (2026-08-18): every exchange used to carry an id, including clarifies — but
+   * the executability check accepts only exchanges that dispatched. Asking again after a
+   * clarify looks like a correction of it, so the router named the clarify's id, the check
+   * refused it, the fallback wrote another clarify, and the next attempt looked more like a
+   * correction still. Three consecutive routes died in that loop. An id the contract would
+   * reject must not be offered — the rule the rest of the router already follows.
+   */
+  test("an exchange that reached no session carries no id to name", () => {
+    const prompt = buildUserPrompt(
+      context({
+        recent_exchanges: [
+          { id: "x1", ts: "2026-08-15T11:58:00.000Z", minutes_ago: 2, utterance: "valami", action: "clarify", target_session_id: null, reply: "Melyikre gondolsz?" },
+        ],
+      }),
+      "x",
+      NOW,
+    );
+    expect(prompt).toContain("[no id]");
+    expect(prompt).not.toContain("[x1]");
+    expect(prompt).toContain("has no id and cannot be corrected");
+  });
+
+  test("the recipe says a repeat after a clarify is a request, not a correction", () => {
+    expect(SYSTEM_PROMPT).toContain("a clarify has none");
+    expect(SYSTEM_PROMPT).toContain("Asking again after a clarify");
+    expect(SYSTEM_PROMPT).toContain("never a correction");
   });
 
   test("no exchanges section before anything has happened", () => {
