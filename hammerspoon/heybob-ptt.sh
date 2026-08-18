@@ -26,6 +26,12 @@ fi
 output=$(bob dictate "$wav" 2>&1)
 status=$?
 
+# The press opened a quiet window (`bob hush`); this roundtrip is where it ends. `bob route`
+# lifts it after the acknowledgement and `bob dictate` lifts it on every path that never
+# routes — this is the outermost belt to those suspenders, for a dictate that dies outright.
+# Lifting an already-lifted window is a no-op.
+bob resume >/dev/null 2>&1
+
 if [ "$status" -ne 0 ]; then
   message=$(printf '%s' "$output" | tail -n 1 | tr -d '"')
   osascript -e "display notification \"${message}\" with title \"Hey Bob\" subtitle \"PTT failed\" sound name \"Basso\"" >/dev/null 2>&1

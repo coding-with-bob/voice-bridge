@@ -62,3 +62,20 @@ describe("bob resume", () => {
     expect(JSON.parse(stdout)).toEqual({ lifted: false });
   });
 });
+
+describe("bob dictate — every path ends the quiet window", () => {
+  /**
+   * Regression (2026-08-18): a 0.88-second press transcribed to silence, so `dictate`
+   * returned before `route` — and nothing lifted the pause the press had opened. The queue
+   * stayed muted for the marker's full three minutes, with no sound to explain why.
+   */
+  test("a dictate that fails outright still lifts the pause", async () => {
+    await run(["hush"]);
+    expect(existsSync(pauseMarkerPath(home))).toBe(true);
+
+    const { code } = await run(["dictate", join(home, "there-is-no-such.wav")]);
+
+    expect(code).not.toBe(0);
+    expect(existsSync(pauseMarkerPath(home))).toBe(false);
+  });
+});

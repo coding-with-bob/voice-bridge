@@ -57,6 +57,20 @@ program
   .option("--stt-only", "transcribe and print, without routing")
   .action(
     async (audioFile: string, options: { json?: boolean; dryRun?: boolean; sttOnly?: boolean }) => {
+      // Whatever happens below, the quiet window `bob hush` opened at the press ends when
+      // this roundtrip does. `route` lifts it after the ack, but a take that transcribes to
+      // silence never reaches `route` — and a 0.88s press then muted the queue for the
+      // marker's full three minutes (observed 2026-08-18, first Esc-cancel attempt).
+      let homeDir: string | null = null;
+      try {
+        homeDir = loadConfig().config.home_dir;
+      } catch {
+        // A broken config is a human's problem; the marker's deadline covers this case.
+      }
+      const endQuietWindow = () => {
+        if (homeDir !== null) clearPauseMarker(homeDir);
+      };
+
       try {
         const apiKey = await resolveApiKey({});
         if (apiKey === null) {
@@ -73,12 +87,14 @@ program
 
         if (transcript.text.trim() === "") {
           // Mirrors the Raycast entry: silence is a non-event, not an error.
+          endQuietWindow();
           if (options.json) console.log(JSON.stringify({ transcript, route: null }, null, 2));
           else console.log("Heard nothing to route.");
           return;
         }
 
         if (options.sttOnly === true) {
+          endQuietWindow();
           if (options.json) console.log(JSON.stringify({ transcript, route: null }, null, 2));
           else console.log(transcript.text);
           return;
@@ -91,6 +107,8 @@ program
           printRouteResult(result, options.dryRun === true);
         }
       } catch (error) {
+        // Before the exit, not in a finally: process.exit does not run finally blocks.
+        endQuietWindow();
         console.error(`bob dictate: ${error instanceof Error ? error.message : String(error)}`);
         process.exit(isSetupError(error) ? 2 : 1);
       }
