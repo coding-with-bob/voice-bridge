@@ -22,6 +22,10 @@ local DEAD_AIR_SECONDS = 2.5 -- with -flush_packets 1 data hits disk within ~1.5
 
 local HOME = os.getenv("HOME")
 local FFMPEG = "/opt/homebrew/bin/ffmpeg"
+-- `bob`'s shebang is /usr/bin/env bun, and hs.task starts us with a minimal environment,
+-- so the verb is invoked through bun by absolute path rather than through the wrapper.
+local BUN = "/opt/homebrew/bin/bun"
+local BOB = HOME .. "/dev/hey-bob/src/cli/bob.ts"
 local DISPATCH = HOME .. "/dev/hey-bob/hammerspoon/heybob-ptt.sh"
 local WAV = HOME .. "/bob/state/ptt-last.wav" -- kept until the next press: it is the debug artifact
 local PTT_LOG = HOME .. "/bob/logs/ptt.jsonl"
@@ -55,6 +59,21 @@ local function logTake(fields)
   end
 end
 
+-- Barge-in: pressing the chord while Bob is talking means "stop talking and listen".
+-- Fired and forgotten — the recorder must never wait on it, because the first syllable
+-- is already on its way. `bob hush` also pauses the playback queue, so nothing else
+-- starts speaking while the utterance is recorded and routed.
+local function hushPlayback()
+  hs.task.new(BUN, nil, { BOB, "hush" }):start()
+end
+
+-- The other half of that pause: every path that ends without a dispatch has to lift it,
+-- or the queue stays muted until the marker's own deadline. Cancel, fat-finger release
+-- and dead capture all land here.
+local function resumeQueue()
+  hs.task.new(BUN, nil, { BOB, "resume" }):start()
+end
+
 local function stopUi()
   if alertId then
     hs.alert.closeSpecific(alertId)
@@ -75,6 +94,7 @@ local function dispatch(exitCode, stderrTail)
   if size <= 44 then -- a wav of header-only size means no audio ever arrived
     logTake({ outcome = "empty", exit_code = exitCode, stderr = stderrTail })
     notify("recording produced no audio — check Hammerspoon's microphone permission")
+    resumeQueue() -- nothing will be routed, so nothing else would lift the pause
     return
   end
   logTake({ outcome = "dispatched", exit_code = exitCode })
@@ -94,10 +114,12 @@ local function onRecorderExit(exitCode, _, stdErr)
   stopUi()
   if wasCancelled then
     logTake({ outcome = deadAir and "dead-air" or "cancelled", exit_code = exitCode, stderr = deadAir and stderrTail or nil })
+    resumeQueue()
     return
   end
   if hs.timer.secondsSinceEpoch() - startedAt < MIN_SECONDS then
     logTake({ outcome = "too-short", exit_code = exitCode })
+    resumeQueue()
     return
   end
   dispatch(exitCode, stderrTail)
@@ -123,6 +145,7 @@ end
 local function startRecording()
   hs.fs.mkdir(HOME .. "/bob/state")
   hs.fs.mkdir(HOME .. "/bob/logs")
+  hushPlayback() -- PTT is the barge-in: no second shortcut, no waiting on the answer
   os.remove(WAV)
   cancelled = false
   deadAir = false
