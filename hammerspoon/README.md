@@ -6,6 +6,11 @@ ElevenLabs Scribe and runs the same route pipeline the Raycast entry uses. Esc w
 cancels. A modifier chord on purpose: modifiers type nothing on their own, so the gesture can
 never collide with an app shortcut, and releasing *any* one of the three keys ends the take.
 
+**The same chord is the interrupt.** Press it while Bob is talking and the answer stops at once
+— no second shortcut to learn — and the queue stays quiet until the router has acknowledged what
+you said instead. Design and mechanism:
+[voice-barge-in-plan.md](../../bob-jarvis/design/voice-barge-in-plan.md).
+
 This exists because the Raycast+Monologue entry is a four-step gesture, and because the two
 alternatives fail for a specific reason: a Raycast extension cannot see a key release at all,
 and silence auto-stop cuts exactly where a non-native speaker pauses to think. Under a held
@@ -41,7 +46,11 @@ shows while the microphone is live, the router speaks its acknowledgement a few 
 release, and the session speaks its answer when the work is done. Thinking pauses mid-utterance
 cost nothing — recording follows the chord, not the sound.
 
-- **Esc while holding** cancels the recording; nothing is dispatched.
+- **Pressing the chord fires `bob hush` first** (fire-and-forget — the recorder never waits on
+  it): whatever is playing stops, the queue pauses, and what went unheard is written down.
+- **Esc while holding** cancels the recording; nothing is dispatched — and `bob resume` lifts the
+  pause immediately, so queued speech does not wait out the marker's deadline. The same applies
+  to every other take that ends without a dispatch: a fat-finger release, and a dead capture.
 - **Releases under 0.25 s** are dropped as fat-fingers.
 - **120 s cap** as runaway protection — a held key is not a stuck key; hitting the cap
   dispatches what was recorded rather than erroring.

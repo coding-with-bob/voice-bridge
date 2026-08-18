@@ -100,8 +100,19 @@ sessions only** — Omnigent persists the launch args, so a session comes back o
 born with, and asking for one alongside a continue is answered by the ack saying it stayed.
 
 **It is also a transcript of everything you have ever said to the machine, and everything it has
-said back.** That is the point — reach-back reads it — but it means the repo has no business
-acquiring a remote without a deliberate decision. It has none today.
+said back.** That is the point — reach-back reads it — and it is why the ledgers are not in git:
+`logs/*.jsonl` and `spoken/*.jsonl` are gitignored (2026-08-19), so the repo tracks only what a
+person authors — `CLAUDE.md`, `defaults.yaml`, `.gitignore`. Git buys an append-only log nothing
+anyway: the file already *is* the chronological record, and diff and blame are meaningless on
+appended lines.
+
+With the transcript out of it, the repo could safely acquire a remote, and did: a **private**
+`hey-bob-state` on GitHub. The history was rewritten first, so the log content committed by
+accident in the early days is not in it either.
+
+The ledgers still need protecting — the spoken log is what reach-back reads — so they are backed
+up as *files*: a daily snapshot into iCloud Drive, driven by Hammerspoon
+([why not launchd](hammerspoon/README.md#the-daily-state-backup-heybob-backuplua--backup-bob-statesh)).
 
 ### 3. Voice (optional but the point)
 
