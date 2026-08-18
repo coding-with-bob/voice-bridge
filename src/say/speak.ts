@@ -7,7 +7,6 @@
  *   - the ElevenLabs fallback is audible — when it fails, the sentence is still spoken,
  *     in the macOS voice, and the log names the engine that really spoke.
  */
-import { join } from "node:path";
 import { capForSpeech, cleanForSpeech, MAX_SPOKEN_CHARS } from "./clean.ts";
 import { applyProsody } from "./prosody.ts";
 import { fallbackSayVoice, selectVoice } from "./select.ts";
@@ -15,6 +14,7 @@ import { acquireLock, LockTimeoutError, type LockOptions } from "./lock.ts";
 import { appendSpokenLine } from "./spoken-log.ts";
 import type { EngineRegistry } from "./engines/engine.ts";
 import type { Engine } from "../contracts/spoken-log.ts";
+import { playbackLockDir } from "../contracts/playback.ts";
 
 export class NothingToSpeakError extends Error {
   override name = "NothingToSpeakError";
@@ -28,6 +28,8 @@ export interface SpeakOptions {
   text: string;
   /** The session speaking, or null for sessionless calls such as router acks. */
   sessionId: string | null;
+  /** The answer this call is a chunk of (C1 --answer); null/absent when the chunk is the answer. */
+  answerId?: string | null;
   homeDir: string;
   defaultVoice: string;
   engines: EngineRegistry;
@@ -48,6 +50,8 @@ export interface SpeakResult {
   log_path: string;
   /** True when the text ran past the cap and only its head was spoken. Never silent: a warning named the cut. */
   truncated: boolean;
+  /** The answer this call was a chunk of, or null (C7). */
+  answer_id: string | null;
 }
 
 export async function speak(options: SpeakOptions): Promise<SpeakResult> {
@@ -73,8 +77,17 @@ export async function speak(options: SpeakOptions): Promise<SpeakResult> {
     defaultVoice: options.defaultVoice,
   });
 
-  const lockDir = join(options.homeDir, "state", "playback");
-  const handle = await takeLock(lockDir, options.lockOptions, warn);
+  const answerId = options.answerId ?? null;
+  const lockDir = playbackLockDir(options.homeDir);
+  const handle = await takeLock(
+    lockDir,
+    {
+      ...options.lockOptions,
+      // The ticket body is what `bob hush` reads to kill the right playback (C7).
+      body: { session_id: options.sessionId, answer_id: answerId, remaining_text: spokenText },
+    },
+    warn,
+  );
   let actual: { engine: Engine; voice: string };
   try {
     actual = await playWithFallback(cleaned, requested, options, warn);
@@ -88,6 +101,7 @@ export async function speak(options: SpeakOptions): Promise<SpeakResult> {
     {
       ts: spokenAt.toISOString(),
       session_id: options.sessionId,
+      answer_id: answerId,
       text: spokenText,
       voice: actual.voice,
       engine: actual.engine,
@@ -101,6 +115,7 @@ export async function speak(options: SpeakOptions): Promise<SpeakResult> {
     voice: actual.voice,
     log_path: logPath,
     truncated: dropped > 0,
+    answer_id: answerId,
   };
 }
 

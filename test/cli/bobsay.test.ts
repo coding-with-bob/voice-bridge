@@ -79,7 +79,7 @@ describe("bobsay — usage", () => {
   test("--help exits 0 and documents the C1 flags", async () => {
     const { code, stdout } = await run(["--help"]);
     expect(code).toBe(0);
-    for (const flag of ["--session", "--voice", "--engine", "--json"]) {
+    for (const flag of ["--session", "--answer", "--voice", "--engine", "--json"]) {
       expect(stdout).toContain(flag);
     }
   });

@@ -10,6 +10,7 @@ import {
 } from "../../src/say/speak.ts";
 import type { SpeechEngine } from "../../src/say/engines/engine.ts";
 import { spokenLogPathFor, parseSpokenLogLine } from "../../src/contracts/spoken-log.ts";
+import { parseTicketBody } from "../../src/contracts/playback.ts";
 
 let home: string;
 
@@ -264,6 +265,50 @@ describe("speak — the cap is loud, never silent", () => {
     );
     expect(result.truncated).toBe(false);
     expect(warnings).toHaveLength(0);
+  });
+});
+
+describe("speak — the answer id rides the ticket, the ledger, and the result (C7)", () => {
+  test("the held ticket carries session, answer, and the text still to speak", async () => {
+    const lockDir = join(home, "state", "playback");
+    let bodies: Array<ReturnType<typeof parseTicketBody>> = [];
+    const say = fakeEngine("say", {
+      onSpeak: () => {
+        bodies = readdirSync(lockDir).map((name) =>
+          parseTicketBody(readFileSync(join(lockDir, name), "utf8")),
+        );
+      },
+    });
+
+    await speak(
+      baseOptions({
+        answerId: "a-77",
+        engines: { say, elevenlabs: fakeEngine("elevenlabs") },
+      }),
+    );
+
+    expect(bodies).toEqual([
+      { session_id: "sess-1", answer_id: "a-77", remaining_text: "The build passed." },
+    ]);
+  });
+
+  test("the C2 line and the --json payload name the answer", async () => {
+    const result = await speak(
+      baseOptions({
+        answerId: "a-77",
+        engines: { say: fakeEngine("say"), elevenlabs: fakeEngine("elevenlabs") },
+      }),
+    );
+    expect(result.answer_id).toBe("a-77");
+    expect(readLog(result.log_path)[0]!.answer_id).toBe("a-77");
+  });
+
+  test("no answer id means null everywhere — the chunk is the answer", async () => {
+    const result = await speak(
+      baseOptions({ engines: { say: fakeEngine("say"), elevenlabs: fakeEngine("elevenlabs") } }),
+    );
+    expect(result.answer_id).toBeNull();
+    expect(readLog(result.log_path)[0]!.answer_id).toBeNull();
   });
 });
 

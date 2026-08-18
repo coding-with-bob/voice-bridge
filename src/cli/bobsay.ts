@@ -26,15 +26,17 @@ program
   .version(version)
   .argument("<text>", "the sentence to speak — plain, no markdown")
   .option("--session <id>", "the session speaking; omit for sessionless calls such as router acks")
+  .option("--answer <id>", "the answer this call is a chunk of; all chunks of one answer share it")
   .option("--voice <engine:voice>", "override the configured default voice")
   .option("--engine <engine>", "force an engine: elevenlabs | say")
-  .option("--json", "emit {spoken_text, engine, voice, log_path, truncated}")
+  .option("--json", "emit {spoken_text, engine, voice, log_path, truncated, answer_id}")
   .action(async (text: string, options: Record<string, string | boolean | undefined>) => {
     try {
       const { config } = loadConfig();
       const result = await speak({
         text,
         sessionId: (options.session as string | undefined) ?? null,
+        answerId: (options.answer as string | undefined) ?? null,
         homeDir: config.home_dir,
         defaultVoice: config.default_voice,
         speed: config.elevenlabs_speed,
@@ -53,7 +55,7 @@ program
 await program.parseAsync(
   separatePositional(process.argv.slice(2), {
     booleanOptions: ["--json", "-h", "--help", "-V", "--version"],
-    valueOptions: ["--session", "--voice", "--engine"],
+    valueOptions: ["--session", "--answer", "--voice", "--engine"],
   }),
   { from: "user" },
 );
