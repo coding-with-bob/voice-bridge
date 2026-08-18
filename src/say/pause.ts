@@ -10,7 +10,7 @@
 import { mkdirSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
 import {
-  PauseMarkerSchema,
+  parsePauseMarker,
   PAUSE_DEADLINE_MS,
   pauseMarkerPath,
   type PauseMarker,
@@ -33,15 +33,8 @@ export function writePauseMarker(
 
 /** The standing marker, or null when there is none — or one nobody can read. */
 export function readPauseMarker(homeDir: string): PauseMarker | null {
-  let raw: string;
   try {
-    raw = readFileSync(pauseMarkerPath(homeDir), "utf8");
-  } catch {
-    return null;
-  }
-  try {
-    const parsed = PauseMarkerSchema.safeParse(JSON.parse(raw));
-    return parsed.success ? parsed.data : null;
+    return parsePauseMarker(readFileSync(pauseMarkerPath(homeDir), "utf8"));
   } catch {
     return null;
   }

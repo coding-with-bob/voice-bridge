@@ -72,6 +72,23 @@ export function interruptionsLogPath(homeDir: string): string {
  * empty-body format. A metadata-less ticket is still a valid queue member: kill-eligible
  * as holder, never matched by answer filters. It must not wedge the queue.
  */
+/**
+ * Parse a pause marker, returning null for anything unreadable. Every failure resolves to
+ * "no pause": a half-written marker must never be able to silence the machine.
+ */
+export function parsePauseMarker(raw: string): PauseMarker | null {
+  const trimmed = raw.trim();
+  if (trimmed === "") return null;
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(trimmed);
+  } catch {
+    return null;
+  }
+  const result = PauseMarkerSchema.safeParse(parsed);
+  return result.success ? result.data : null;
+}
+
 export function parseTicketBody(raw: string): TicketBody | null {
   const trimmed = raw.trim();
   if (trimmed === "") return null;

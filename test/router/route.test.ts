@@ -1,12 +1,13 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { route, RouteError, type RouteDeps } from "../../src/router/route.ts";
 import { interruptionNote, metadataBlock } from "../../src/router/convention.ts";
 import { readDecisionEntries } from "../../src/router/decision-log.ts";
 import { appendInterruption } from "../../src/say/interruptions.ts";
-import type { InterruptionRecord } from "../../src/contracts/playback.ts";
+import { writePauseMarker } from "../../src/say/pause.ts";
+import { pauseMarkerPath, type InterruptionRecord } from "../../src/contracts/playback.ts";
 import { pathsFor } from "../../src/config/load.ts";
 import { DEFAULT_CONFIG } from "../../src/contracts/config.ts";
 import type { PoolSession } from "../../src/omnigent/parse.ts";
@@ -443,5 +444,60 @@ describe("route — under a barge-in", () => {
     const { deps, messages } = harness();
     await route("do it", deps);
     expect(messages[0]!.text).toBe(`${metadataBlock("s1")}\n\ndo it`);
+  });
+});
+
+describe("route — the quiet window ends with the ack (C7c)", () => {
+  const pause = () => writePauseMarker(home, NOW);
+
+  test("the marker is still standing while the ack is spoken, and gone after", async () => {
+    pause();
+    let stoodDuringAck = false;
+    const { deps } = harness({
+      speak: async () => {
+        stoodDuringAck = existsSync(pauseMarkerPath(home));
+      },
+    });
+
+    await route("and the other one too", deps);
+
+    // The ack speaks through its own pause (exempt) and then lifts it.
+    expect(stoodDuringAck).toBe(true);
+    expect(existsSync(pauseMarkerPath(home))).toBe(false);
+  });
+
+  test("an ack that could not be spoken still lifts the pause — silence must not mute the queue", async () => {
+    pause();
+    const { deps } = harness({
+      speak: async () => {
+        throw new Error("no speakers");
+      },
+      warn: () => {},
+    });
+
+    await route("and the other one too", deps);
+    expect(existsSync(pauseMarkerPath(home))).toBe(false);
+  });
+
+  test("a fallback lifts it too — the roundtrip is over either way", async () => {
+    pause();
+    const { deps } = harness({ modelCall: async () => ({ raw: "not json", latencyMs: 1 }) });
+
+    await route("do the thing", deps);
+    expect(existsSync(pauseMarkerPath(home))).toBe(false);
+  });
+
+  test("a dry run lifts it as well: nothing was dispatched, but the window is over", async () => {
+    pause();
+    const { deps } = harness({ dryRun: true });
+
+    await route("and the other one too", deps);
+    expect(existsSync(pauseMarkerPath(home))).toBe(false);
+  });
+
+  test("a route with no pause standing is untroubled by its absence", async () => {
+    const { deps } = harness();
+    await route("and the other one too", deps);
+    expect(existsSync(pauseMarkerPath(home))).toBe(false);
   });
 });

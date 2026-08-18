@@ -40,6 +40,7 @@ import { extractJson, type ModelCall } from "./model.ts";
 import { buildUserPrompt, SYSTEM_PROMPT } from "./prompt.ts";
 import { interruptionNote } from "./convention.ts";
 import { readLatestInterruption } from "../say/interruptions.ts";
+import { clearPauseMarker } from "../say/pause.ts";
 
 /** Own-tool sessions run without approval friction, per D10. */
 export const PERMISSION_MODE = "bypassPermissions";
@@ -70,7 +71,12 @@ export interface RouteDeps {
   conventionText: string;
   projectsRoot: string;
   projectDirs: string[];
-  /** Speaks one sentence out loud; sessionless, so the recency derivation ignores it. */
+  /**
+   * Speaks one sentence out loud; sessionless, so the recency derivation ignores it. It must
+   * speak **pause-exempt** (C7c): the ack is the event the quiet window is waiting for, so an
+   * ack queued behind its own pause would never be heard and the window would only end at its
+   * deadline.
+   */
   speak: (text: string) => Promise<void>;
   warn?: (message: string) => void;
   now?: () => Date;
@@ -205,13 +211,20 @@ async function routeUnderLock(
 
   // The ack plays after the entry is on disk: a long playback queue may hold the lock for
   // minutes, and the next routing reads its context from the log, not from this process.
-  if (deps.dryRun !== true) {
-    try {
-      await deps.speak(spoken);
-    } catch (error) {
-      // The dispatch and the log entry are already safe; the ack alone is expendable.
-      (deps.warn ?? console.error)(`bob route: could not speak the ack: ${describe(error)}`);
+  try {
+    if (deps.dryRun !== true) {
+      try {
+        await deps.speak(spoken);
+      } catch (error) {
+        // The dispatch and the log entry are already safe; the ack alone is expendable.
+        (deps.warn ?? console.error)(`bob route: could not speak the ack: ${describe(error)}`);
+      }
     }
+  } finally {
+    // The quiet window `bob hush` opened at the PTT press ends here, whatever happened to
+    // the ack (C7c). The ack is expendable; lifting the pause is not — a queue left muted
+    // until the deadline is the barge-in feature turning into a mute button.
+    clearPauseMarker(deps.config.home_dir);
   }
 
   return {

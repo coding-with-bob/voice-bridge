@@ -1,5 +1,13 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { mkdtempSync, readFileSync, rmSync, writeFileSync, utimesSync, readdirSync } from "node:fs";
+import {
+  existsSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+  utimesSync,
+  readdirSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
@@ -198,6 +206,80 @@ describe("LockHandle.rewriteBody", () => {
     handle.release();
     handle.rewriteBody({ session_id: "s", answer_id: null, remaining_text: "ghost" });
     expect(readdirSync(dir)).toHaveLength(0);
+  });
+});
+
+describe("acquireLock — the quiet window (C7c)", () => {
+  const marker = (deadlineMs: number) =>
+    writeFileSync(
+      join(dir, "pause.json"),
+      JSON.stringify({
+        ts: new Date().toISOString(),
+        deadline: new Date(Date.now() + deadlineMs).toISOString(),
+      }),
+    );
+
+  test("an ordinary ticket may not become holder while the pause stands", async () => {
+    marker(60_000);
+    await expect(acquireLock(dir, { ...fast, timeoutMs: 120 })).rejects.toThrow(LockTimeoutError);
+  });
+
+  test("a waiting ticket stays alive through the pause — it is not pruned as stale", async () => {
+    marker(60_000);
+    const waiter = acquireLock(dir, { ...fast, staleMs: 60, timeoutMs: 400 }).catch(() => "timeout");
+    await sleep(200);
+    // Still queued, still refreshed: the pause holds speech back, it does not lose it.
+    expect(readTickets(dir)).toHaveLength(1);
+    expect(await waiter).toBe("timeout");
+  });
+
+  test("the router's ack is exempt — it speaks through the pause it is ending", async () => {
+    marker(60_000);
+    const handle = await acquireLock(dir, { ...fast, pauseExempt: true, timeoutMs: 500 });
+    handle.release();
+  });
+
+  test("an expired marker is deleted, said out loud on stderr, and stops blocking", async () => {
+    marker(-1_000); // a roundtrip that crashed a second ago
+    const warnings: string[] = [];
+    const handle = await acquireLock(dir, {
+      ...fast,
+      timeoutMs: 500,
+      warn: (message) => warnings.push(message),
+    });
+    handle.release();
+
+    expect(existsSync(join(dir, "pause.json"))).toBe(false);
+    expect(warnings.join(" ")).toContain("pause");
+  });
+
+  test("an unreadable marker is not a mute button — it is cleared and playback goes on", async () => {
+    writeFileSync(join(dir, "pause.json"), "{half a wri");
+    const handle = await acquireLock(dir, { ...fast, timeoutMs: 500 });
+    handle.release();
+    expect(existsSync(join(dir, "pause.json"))).toBe(false);
+  });
+
+  test("once the pause is lifted, the queue flows again in arrival order", async () => {
+    marker(60_000);
+    const served: number[] = [];
+    const waiters: Promise<void>[] = [];
+    for (const index of [1, 2]) {
+      waiters.push(
+        acquireLock(dir, { ...fast, timeoutMs: 5_000 }).then((handle) => {
+          served.push(index);
+          handle.release();
+        }),
+      );
+      await sleep(20); // stagger arrivals so the order under test is a real one
+    }
+
+    await sleep(50);
+    expect(served).toEqual([]); // nothing spoke while the person was talking
+
+    rmSync(join(dir, "pause.json"));
+    await Promise.all(waiters);
+    expect(served).toEqual([1, 2]);
   });
 });
 

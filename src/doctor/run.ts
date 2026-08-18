@@ -11,6 +11,7 @@ import {
   CONVENTION_BUDGET_CHARS,
   MAX_CONVENTION_CHARS,
 } from "../router/convention.ts";
+import { readPauseMarker } from "../say/pause.ts";
 import { claudeLauncher, extractJson, type ModelCall } from "../router/model.ts";
 import { CLAUDE_NATIVE_HARNESS, type OmnigentClient } from "../omnigent/client.ts";
 
@@ -80,6 +81,7 @@ export async function runDoctor(deps: DoctorDeps): Promise<DoctorReport> {
   const checks: CheckResult[] = [
     configCheck(deps),
     conventionCheck(deps),
+    quietCheck(deps),
     await serverCheck(deps),
     await bindCheck(deps),
     await hostCheck(deps),
@@ -140,6 +142,32 @@ function conventionCheck(deps: DoctorDeps): CheckResult {
       hint: `Restore the C6 block in ${deps.conventionFile}; spawned sessions read it from there.`,
     };
   }
+}
+
+/**
+ * A standing quiet window is normal for a few seconds — it lasts from the PTT press to the
+ * router's ack. One that outlived its deadline is not: it means a voice roundtrip died
+ * without lifting its own pause, and until something else speaks (which clears it, loudly)
+ * the machine looks mute for no visible reason. Cheap to check, invisible otherwise.
+ */
+function quietCheck(deps: DoctorDeps): CheckResult {
+  const marker = readPauseMarker(deps.homeDir);
+  if (marker === null) return { name: "quiet", ok: true, detail: "no playback pause standing" };
+
+  const deadline = Date.parse(marker.deadline);
+  const expired = Number.isFinite(deadline) && deadline < (deps.now?.() ?? Date.now());
+  return expired
+    ? {
+        name: "quiet",
+        ok: false,
+        detail: `a playback pause from ${marker.ts} outlived its deadline (${marker.deadline})`,
+        hint: "Run `bob resume` to lift it; a roundtrip died without ending its own quiet window.",
+      }
+    : {
+        name: "quiet",
+        ok: true,
+        detail: `playback paused until ${marker.deadline} (a voice roundtrip is in flight)`,
+      };
 }
 
 async function serverCheck(deps: DoctorDeps): Promise<CheckResult> {

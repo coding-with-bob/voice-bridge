@@ -1,8 +1,25 @@
-import { describe, expect, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { mkdtempSync, rmSync } from "node:fs";
 import { runDoctor, type DoctorDeps } from "../../src/doctor/run.ts";
 import type { PoolSession } from "../../src/omnigent/parse.ts";
-import { homedir } from "node:os";
+import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
+import { writePauseMarker } from "../../src/say/pause.ts";
+
+/**
+ * The state home is a fresh directory per test. It used to be the real `~/bob`, which was
+ * harmless while every check read the pool — but the quiet-window check reads state off
+ * disk, and a pause marker left by the machine's own last barge-in would fail the suite.
+ */
+let home: string;
+
+beforeEach(() => {
+  home = mkdtempSync(join(tmpdir(), "bob-doctor-"));
+});
+
+afterEach(() => {
+  rmSync(home, { recursive: true, force: true });
+});
 
 type StubClient = DoctorDeps["client"];
 
@@ -25,7 +42,7 @@ function stubClient(overrides: Partial<Record<keyof StubClient, unknown>> = {}):
 const deps = (overrides: Partial<DoctorDeps> = {}): DoctorDeps => ({
   client: stubClient(),
   omnigentUrl: "http://127.0.0.1:6767",
-  homeDir: "/Users/felho/bob",
+  homeDir: home,
   configSource: "file",
   conventionFile: join(homedir(), "bob", "CLAUDE.md"),
   readListenHosts: async () => ["127.0.0.1"],
@@ -49,6 +66,7 @@ describe("runDoctor — a healthy platform", () => {
     expect(report.checks.map((entry) => entry.name)).toEqual([
       "config",
       "speech",
+      "quiet",
       "server",
       "bind",
       "host",
@@ -108,7 +126,7 @@ describe("runDoctor — every failure explains its fix", () => {
         },
       }),
     );
-    expect(report.checks).toHaveLength(9);
+    expect(report.checks).toHaveLength(10);
     expect(check(report, "bind").ok).toBe(false);
     expect(check(report, "bind").detail).toContain("lsof");
     expect(check(report, "bind").hint).toContain("PATH");
@@ -170,7 +188,7 @@ describe("runDoctor — every failure explains its fix", () => {
     const report = await runDoctor(
       deps({ client: stubClient({ health: async () => ({ ok: false, detail: "down" }) }) }),
     );
-    expect(report.checks).toHaveLength(9);
+    expect(report.checks).toHaveLength(10);
   });
 });
 
@@ -283,5 +301,29 @@ describe("runDoctor — slow but working", () => {
     const spawn = check(report, "spawn");
     expect(spawn.ok).toBe(true);
     expect(spawn.hint).toContain("slower");
+  });
+});
+
+describe("runDoctor — the quiet window", () => {
+  test("says nothing is paused when nothing is", async () => {
+    const report = await runDoctor(deps());
+    expect(check(report, "quiet").ok).toBe(true);
+    expect(check(report, "quiet").detail).toContain("no playback pause");
+  });
+
+  test("a pause in flight is normal — a voice roundtrip is simply in progress", async () => {
+    writePauseMarker(home, new Date());
+    const report = await runDoctor(deps());
+    expect(check(report, "quiet").ok).toBe(true);
+    expect(check(report, "quiet").detail).toContain("paused until");
+  });
+
+  test("a pause past its deadline is a failure with the command that lifts it", async () => {
+    // A roundtrip that died without ending its own quiet window.
+    writePauseMarker(home, new Date(Date.now() - 10 * 60_000));
+    const report = await runDoctor(deps());
+    expect(check(report, "quiet").ok).toBe(false);
+    expect(check(report, "quiet").detail).toContain("outlived its deadline");
+    expect(check(report, "quiet").hint).toContain("bob resume");
   });
 });

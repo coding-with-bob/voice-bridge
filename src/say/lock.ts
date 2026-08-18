@@ -21,7 +21,7 @@ import {
   writeFileSync,
 } from "node:fs";
 import { basename, dirname, join } from "node:path";
-import { parseTicketBody, type TicketBody } from "../contracts/playback.ts";
+import { parsePauseMarker, parseTicketBody, type TicketBody } from "../contracts/playback.ts";
 import { registerCleanup } from "./cleanup.ts";
 
 export class LockTimeoutError extends Error {
@@ -46,6 +46,14 @@ export interface LockOptions {
   timeoutMs?: number;
   /** C7 metadata written into the ticket file, so `bob hush` can see who speaks what. */
   body?: TicketBody;
+  /**
+   * Ignore the quiet window (C7c). Used only by the router's acknowledgement, which is the
+   * thing the window is waiting for — an ack that queued behind its own pause would never
+   * be spoken, and the pause would only end at its deadline.
+   */
+  pauseExempt?: boolean;
+  /** Where a lifted-by-expiry pause is announced. Defaults to stderr. */
+  warn?: (message: string) => void;
 }
 
 /**
@@ -71,6 +79,9 @@ const TICKET_SUFFIX = ".ticket";
  */
 const HOLDER_MARKER = "holder.lock";
 
+/** The C7c quiet-window marker, a sibling of the tickets it holds back. */
+const PAUSE_MARKER = "pause.json";
+
 /** Distinguishes tickets taken within the same millisecond by the same process. */
 let sequence = 0;
 
@@ -84,9 +95,15 @@ export async function acquireLock(lockDir: string, options: LockOptions = {}): P
   const ticketPath = join(lockDir, ticket);
   writeFileSync(ticketPath, options.body ? JSON.stringify(options.body) : "");
 
+  const warn = options.warn ?? ((message: string) => console.error(message));
+  const mayHold = () =>
+    (options.pauseExempt === true || !pauseStands(lockDir, warn)) &&
+    isSmallestLive(lockDir, ticket, staleMs) &&
+    claimHolder(lockDir, ticket);
+
   const deadline = Date.now() + timeoutMs;
   try {
-    while (!(isSmallestLive(lockDir, ticket, staleMs) && claimHolder(lockDir, ticket))) {
+    while (!mayHold()) {
       if (Date.now() >= deadline) {
         throw new LockTimeoutError(
           `Timed out after ${timeoutMs}ms waiting for the playback lock in ${lockDir}.`,
@@ -174,6 +191,42 @@ function mintTicketName(): string {
   const pid = String(process.pid).padStart(7, "0");
   const seq = String(sequence++).padStart(6, "0");
   return `${stamp}-${pid}-${seq}${TICKET_SUFFIX}`;
+}
+
+/**
+ * Is the quiet window standing? (C7c)
+ *
+ * The window runs from the PTT press until the router's acknowledgement, so nothing starts
+ * talking while the person is speaking or waiting for an answer. It is not a mute button:
+ * waiting tickets keep their place and their heartbeat, so the speech is held back, never
+ * lost. Every way of failing to read the marker resolves to "no pause" — a half-written or
+ * hand-mangled file must not silence the machine — and an expired one is deleted **loudly**,
+ * because reaching the deadline means some roundtrip died without lifting its own pause.
+ */
+function pauseStands(lockDir: string, warn: (message: string) => void): boolean {
+  const markerPath = join(lockDir, PAUSE_MARKER);
+  let raw: string;
+  try {
+    raw = readFileSync(markerPath, "utf8");
+  } catch {
+    return false; // no marker: the ordinary case
+  }
+
+  const marker = parsePauseMarker(raw);
+  if (marker === null) {
+    remove(markerPath);
+    return false;
+  }
+
+  const deadline = Date.parse(marker.deadline);
+  if (!Number.isFinite(deadline) || deadline > Date.now()) return Number.isFinite(deadline);
+
+  remove(markerPath);
+  warn(
+    `bobsay: the playback pause from ${marker.ts} expired without being lifted — ` +
+      `some voice roundtrip did not finish. Speaking anyway.`,
+  );
+  return false;
 }
 
 /**

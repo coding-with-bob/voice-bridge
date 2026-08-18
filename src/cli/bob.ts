@@ -118,6 +118,8 @@ async function runRoute(utterance: string, dryRun: boolean): Promise<RouteResult
         defaultVoice: config.default_voice,
         speed: config.elevenlabs_speed,
         engines: { say: sayEngine, elevenlabs: elevenLabsEngine },
+        // The ack is what the quiet window is waiting for, so it speaks through it (C7c).
+        lockOptions: { pauseExempt: true },
       });
     },
     ...(dryRun ? { dryRun: true } : {}),
