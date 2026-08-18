@@ -94,6 +94,48 @@ describe("elevenlabs engine — request", () => {
     expect(body.next_text).toBe("Third sentence.");
   });
 
+  test("request ids trump previous_text — the API ignores text when ids are sent", () => {
+    const { init } = buildElevenLabsRequest({
+      voiceId: "abc",
+      text: "Third sentence.",
+      apiKey: "sk-test",
+      previousText: "First. Second.",
+      nextText: "Fourth.",
+      previousRequestIds: ["req-1", "req-2"],
+    });
+    const body = JSON.parse(init.body as string);
+    expect(body.previous_request_ids).toEqual(["req-1", "req-2"]);
+    expect(body).not.toHaveProperty("previous_text");
+    expect(body.next_text).toBe("Fourth.");
+  });
+
+  test("caps the ids at the API's maximum of three, keeping the most recent", () => {
+    const { init } = buildElevenLabsRequest({
+      voiceId: "abc",
+      text: "Fifth.",
+      apiKey: "sk-test",
+      previousRequestIds: ["req-1", "req-2", "req-3", "req-4"],
+    });
+    expect(JSON.parse(init.body as string).previous_request_ids).toEqual([
+      "req-2",
+      "req-3",
+      "req-4",
+    ]);
+  });
+
+  test("an empty id list is no id list — previous_text stays in force", () => {
+    const { init } = buildElevenLabsRequest({
+      voiceId: "abc",
+      text: "Second.",
+      apiKey: "sk-test",
+      previousText: "First.",
+      previousRequestIds: [],
+    });
+    const body = JSON.parse(init.body as string);
+    expect(body).not.toHaveProperty("previous_request_ids");
+    expect(body.previous_text).toBe("First.");
+  });
+
   test("sends no stitching fields when there are no neighbours — a lone sentence stands alone", () => {
     const { init } = buildElevenLabsRequest({ voiceId: "abc", text: "Ready.", apiKey: "sk-test" });
     const body = JSON.parse(init.body as string);

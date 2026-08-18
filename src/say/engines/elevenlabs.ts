@@ -28,10 +28,14 @@ export function buildElevenLabsRequest(options: {
   previousText?: string;
   /** The sentences of the same answer still to come. */
   nextText?: string;
+  /** Ids of the answer's earlier generations — request stitching, capped at the API's 3. */
+  previousRequestIds?: string[];
 }): { url: string; init: RequestInit } {
   // At the default rate no voice_settings go out at all: the voice's stored settings
   // stay authoritative, and the request is byte-identical to the pre-speed era.
   const overridesRate = options.speed !== undefined && options.speed !== 1.0;
+  // The API ignores previous_text when request ids are present, so send one or the other.
+  const requestIds = (options.previousRequestIds ?? []).slice(-3);
   return {
     url: `${API_ROOT}/${encodeURIComponent(options.voiceId)}?output_format=${OUTPUT_FORMAT}`,
     init: {
@@ -47,7 +51,11 @@ export function buildElevenLabsRequest(options: {
         ...(overridesRate ? { voice_settings: { speed: options.speed } } : {}),
         // Stitching: the model synthesises the sentence *in* its answer, not as a
         // standalone line — independently synthesised sentences reset intonation.
-        ...(options.previousText ? { previous_text: options.previousText } : {}),
+        ...(requestIds.length > 0
+          ? { previous_request_ids: requestIds }
+          : options.previousText
+            ? { previous_text: options.previousText }
+            : {}),
         ...(options.nextText ? { next_text: options.nextText } : {}),
       }),
     },
@@ -101,6 +109,7 @@ export const elevenLabsEngine: SpeechEngine = {
       speed: tuning?.speed,
       previousText: tuning?.previousText,
       nextText: tuning?.nextText,
+      previousRequestIds: tuning?.previousRequestIds,
     });
 
     const response = await fetch(url, init);
@@ -116,6 +125,8 @@ export const elevenLabsEngine: SpeechEngine = {
     const cleanup = () => rmSync(dir, { recursive: true, force: true });
 
     return {
+      // Safe to condition on: the generation completed — the body is fully read above.
+      requestId: response.headers.get("request-id") ?? undefined,
       async play() {
         try {
           const player = Bun.spawn(["afplay", file], { stdout: "ignore", stderr: "pipe" });

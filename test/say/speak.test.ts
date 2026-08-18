@@ -66,6 +66,8 @@ function fakeEngine(name: "say" | "elevenlabs", behaviour: FakeBehaviour = {}): 
         throw new Error(`${name} blew up`);
       }
       return {
+        // Only ElevenLabs hands back a request id, like the real engine.
+        requestId: name === "elevenlabs" ? `${name}-req-${prepareCalls}` : undefined,
         async play() {
           events.push(`play-start:${text}`);
           behaviour.onSpeak?.(text);
@@ -372,6 +374,22 @@ describe("speak — sentence chunking (M1)", () => {
     expect(prepareSecond).toBeGreaterThan(-1);
     expect(prepareSecond).toBeLessThan(firstDone);
     expect(prepareThird).toBeLessThan(secondDone);
+  });
+
+  test("each sentence carries the request ids of the ones before it — request stitching", async () => {
+    const eleven = fakeEngine("elevenlabs");
+    await speak(
+      baseOptions({
+        text: THREE,
+        defaultVoice: "elevenlabs:abc123",
+        engines: { say: fakeEngine("say"), elevenlabs: eleven },
+      }),
+    );
+    expect(eleven.tunings.map((t) => t?.previousRequestIds)).toEqual([
+      undefined,
+      ["elevenlabs-req-1"],
+      ["elevenlabs-req-1", "elevenlabs-req-2"],
+    ]);
   });
 
   test("ElevenLabs gets the neighbours for stitching — spoken text behind, unspoken ahead", async () => {

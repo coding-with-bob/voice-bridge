@@ -8,6 +8,12 @@ export interface SpeakTuning {
   previousText?: string;
   /** Prosody stitching: the same answer's sentences still to come. */
   nextText?: string;
+  /**
+   * Request stitching: ids of the answer's earlier generations, oldest first. Stronger
+   * than `previousText` (which the API ignores when ids are present); only ids of fully
+   * completed generations may be sent — the pipeline's sequential prepares guarantee it.
+   */
+  previousRequestIds?: string[];
 }
 
 /**
@@ -20,6 +26,8 @@ export interface SpeakTuning {
 export interface PreparedSpeech {
   play(): Promise<void>;
   dispose(): void;
+  /** The engine's id for this generation, when it has one — food for request stitching. */
+  readonly requestId?: string;
 }
 
 /**

@@ -100,6 +100,8 @@ export async function speak(options: SpeakOptions): Promise<SpeakResult> {
   let fellBack = false;
   let logPath = "";
   let prefetch: Promise<PreparedSpeech> | null = null;
+  /** Ids of this answer's completed generations, oldest first — request stitching food. */
+  const requestIds: string[] = [];
 
   const prepareSentence = (index: number): Promise<PreparedSpeech> =>
     options.engines[current.engine].prepare(
@@ -110,6 +112,7 @@ export async function speak(options: SpeakOptions): Promise<SpeakResult> {
         // Stitching context (C7/M1): the sentence is synthesised *in* its answer.
         previousText: index > 0 ? plain.slice(0, index).join(" ") : undefined,
         nextText: index + 1 < sentences.length ? plain.slice(index + 1).join(" ") : undefined,
+        previousRequestIds: requestIds.length > 0 ? requestIds.slice(-3) : undefined,
       },
     );
 
@@ -156,6 +159,7 @@ export async function speak(options: SpeakOptions): Promise<SpeakResult> {
       } catch (error) {
         prepared = await fallBackFor(index, error);
       }
+      if (prepared.requestId !== undefined) requestIds.push(prepared.requestId);
       prefetch = index + 1 < sentences.length ? startPrefetch(index + 1) : null;
 
       try {
