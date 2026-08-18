@@ -8,7 +8,7 @@ import {
   NothingToSpeakError,
   type SpeakOptions,
 } from "../../src/say/speak.ts";
-import type { SpeechEngine } from "../../src/say/engines/engine.ts";
+import type { SpeakTuning, SpeechEngine } from "../../src/say/engines/engine.ts";
 import { spokenLogPathFor, parseSpokenLogLine } from "../../src/contracts/spoken-log.ts";
 import { parseTicketBody } from "../../src/contracts/playback.ts";
 
@@ -27,22 +27,62 @@ interface Spoken {
   voice: string;
 }
 
-function fakeEngine(
-  name: "say" | "elevenlabs",
-  behaviour: { available?: boolean; fail?: boolean; onSpeak?: () => void } = {},
-): SpeechEngine & { spoken: Spoken[] } {
+interface FakeBehaviour {
+  available?: boolean;
+  /** Every sentence fails. `failAt` picks the phase (default: prepare). */
+  fail?: boolean;
+  /** Only the Nth prepare call fails (1-based) — for mid-answer fallback tests. */
+  failOnCall?: number;
+  failAt?: "prepare" | "play";
+  onSpeak?: (text: string) => void;
+  playDelayMs?: number;
+}
+
+interface FakeEngine extends SpeechEngine {
+  spoken: Spoken[];
+  /** prepare / play-start / play-end / dispose events, in real order. */
+  events: string[];
+  tunings: Array<SpeakTuning | undefined>;
+}
+
+function fakeEngine(name: "say" | "elevenlabs", behaviour: FakeBehaviour = {}): FakeEngine {
   const spoken: Spoken[] = [];
+  const events: string[] = [];
+  const tunings: Array<SpeakTuning | undefined> = [];
+  let prepareCalls = 0;
+
   return {
     name,
     spoken,
+    events,
+    tunings,
     available: () => behaviour.available ?? true,
-    async speak(text: string, voice: string) {
-      behaviour.onSpeak?.();
-      if (behaviour.fail) throw new Error(`${name} blew up`);
-      spoken.push({ text, voice });
+    async prepare(text: string, voice: string, tuning?: SpeakTuning) {
+      prepareCalls += 1;
+      const failsThis = behaviour.fail === true || behaviour.failOnCall === prepareCalls;
+      events.push(`prepare:${text}`);
+      tunings.push(tuning);
+      if (failsThis && (behaviour.failAt ?? "prepare") === "prepare") {
+        throw new Error(`${name} blew up`);
+      }
+      return {
+        async play() {
+          events.push(`play-start:${text}`);
+          behaviour.onSpeak?.(text);
+          if (behaviour.playDelayMs) await sleep(behaviour.playDelayMs);
+          if (failsThis) throw new Error(`${name} blew up`);
+          spoken.push({ text, voice });
+          events.push(`play-end:${text}`);
+        },
+        dispose() {
+          events.push(`dispose:${text}`);
+        },
+      };
     },
   };
 }
+
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 const baseOptions = (
   overrides: Partial<SpeakOptions> & Pick<SpeakOptions, "engines">,
@@ -207,18 +247,11 @@ describe("speak — nothing speakable", () => {
 
 describe("speak — the configured speed reaches the engine", () => {
   test("the tuning rides along to the engine that plays", async () => {
-    const speeds: Array<number | undefined> = [];
-    const engine: SpeechEngine = {
-      name: "say",
-      available: () => true,
-      async speak(_text, _voice, tuning) {
-        speeds.push(tuning?.speed);
-      },
-    };
+    const say = fakeEngine("say");
     await speak(
-      baseOptions({ engines: { say: engine, elevenlabs: fakeEngine("elevenlabs") }, speed: 1.1 }),
+      baseOptions({ engines: { say, elevenlabs: fakeEngine("elevenlabs") }, speed: 1.1 }),
     );
-    expect(speeds).toEqual([1.1]);
+    expect(say.tunings.map((t) => t?.speed)).toEqual([1.1]);
   });
 });
 
@@ -265,6 +298,151 @@ describe("speak — the cap is loud, never silent", () => {
     );
     expect(result.truncated).toBe(false);
     expect(warnings).toHaveLength(0);
+  });
+});
+
+describe("speak — sentence chunking (M1)", () => {
+  const THREE = "First point. Second point. Third point.";
+
+  test("each sentence plays on its own and gets its own C2 line, in order", async () => {
+    const say = fakeEngine("say");
+    const result = await speak(
+      baseOptions({
+        text: THREE,
+        answerId: "a-9",
+        engines: { say, elevenlabs: fakeEngine("elevenlabs") },
+      }),
+    );
+
+    expect(say.spoken.map((s) => s.text)).toEqual([
+      "First point.",
+      "Second point.",
+      "Third point.",
+    ]);
+    const entries = readLog(result.log_path);
+    expect(entries.map((e) => e!.text)).toEqual(["First point.", "Second point.", "Third point."]);
+    expect(entries.every((e) => e!.session_id === "sess-1" && e!.answer_id === "a-9")).toBe(true);
+    expect(result.spoken_text).toBe(THREE);
+  });
+
+  test("a sentence's ledger line lands before the next sentence starts playing", async () => {
+    const linesAtPlayStart: number[] = [];
+    const say = fakeEngine("say", {
+      onSpeak: () => {
+        const path = spokenLogPathFor(home, new Date());
+        linesAtPlayStart.push(existsSync(path) ? readLog(path).length : 0);
+      },
+    });
+    await speak(
+      baseOptions({ text: THREE, engines: { say, elevenlabs: fakeEngine("elevenlabs") } }),
+    );
+    expect(linesAtPlayStart).toEqual([0, 1, 2]);
+  });
+
+  test("the ticket's remaining_text always starts at the sentence now playing", async () => {
+    const lockDir = join(home, "state", "playback");
+    const remainings: Array<string | undefined> = [];
+    const say = fakeEngine("say", {
+      onSpeak: () => {
+        const tickets = readdirSync(lockDir).filter((n) => n.endsWith(".ticket"));
+        remainings.push(
+          parseTicketBody(readFileSync(join(lockDir, tickets[0]!), "utf8"))?.remaining_text,
+        );
+      },
+    });
+    await speak(
+      baseOptions({ text: THREE, engines: { say, elevenlabs: fakeEngine("elevenlabs") } }),
+    );
+    expect(remainings).toEqual([
+      "First point. Second point. Third point.",
+      "Second point. Third point.",
+      "Third point.",
+    ]);
+  });
+
+  test("the next sentence is synthesised while the current one plays — prefetch, one ahead", async () => {
+    const say = fakeEngine("say", { playDelayMs: 15 });
+    await speak(
+      baseOptions({ text: THREE, engines: { say, elevenlabs: fakeEngine("elevenlabs") } }),
+    );
+    const prepareSecond = say.events.indexOf("prepare:Second point.");
+    const firstDone = say.events.indexOf("play-end:First point.");
+    const prepareThird = say.events.indexOf("prepare:Third point.");
+    const secondDone = say.events.indexOf("play-end:Second point.");
+    expect(prepareSecond).toBeGreaterThan(-1);
+    expect(prepareSecond).toBeLessThan(firstDone);
+    expect(prepareThird).toBeLessThan(secondDone);
+  });
+
+  test("ElevenLabs gets the neighbours for stitching — spoken text behind, unspoken ahead", async () => {
+    const eleven = fakeEngine("elevenlabs");
+    await speak(
+      baseOptions({
+        text: THREE,
+        defaultVoice: "elevenlabs:abc123",
+        engines: { say: fakeEngine("say"), elevenlabs: eleven },
+      }),
+    );
+    expect(eleven.tunings.map((t) => [t?.previousText, t?.nextText])).toEqual([
+      [undefined, "Second point. Third point."],
+      ["First point.", "Third point."],
+      ["First point. Second point.", undefined],
+    ]);
+  });
+});
+
+describe("speak — the fallback is per answer, not per sentence (M1)", () => {
+  test("the first ElevenLabs failure drops the rest of the answer to say", async () => {
+    const eleven = fakeEngine("elevenlabs", { failOnCall: 2 });
+    const say = fakeEngine("say");
+    const warnings: string[] = [];
+    const result = await speak(
+      baseOptions({
+        text: "First point. Second point. Third point.",
+        defaultVoice: "elevenlabs:abc123",
+        engines: { say, elevenlabs: eleven },
+        warn: (message) => warnings.push(message),
+      }),
+    );
+
+    expect(eleven.spoken.map((s) => s.text)).toEqual(["First point."]);
+    expect(say.spoken.map((s) => s.text)).toEqual(["Second point.", "Third point."]);
+    // No mid-answer flapping: sentence three never went back to ElevenLabs.
+    expect(eleven.events).not.toContain("prepare:Third point.");
+    expect(result.engine).toBe("say");
+
+    const entries = readLog(result.log_path);
+    expect(entries.map((e) => e!.engine)).toEqual(["elevenlabs", "say", "say"]);
+    expect(warnings.join(" ")).toContain("falling back");
+  });
+
+  test("a playback failure falls back too, and the sentence is still spoken — audibly, never silently", async () => {
+    const eleven = fakeEngine("elevenlabs", { failOnCall: 1, failAt: "play" });
+    const say = fakeEngine("say");
+    const result = await speak(
+      baseOptions({
+        text: "First point. Second point.",
+        defaultVoice: "elevenlabs:abc123",
+        engines: { say, elevenlabs: eleven },
+        warn: () => {},
+      }),
+    );
+    expect(say.spoken.map((s) => s.text)).toEqual(["First point.", "Second point."]);
+    expect(readLog(result.log_path).map((e) => e!.engine)).toEqual(["say", "say"]);
+  });
+
+  test("sentences already spoken keep their ledger lines when say later hard-fails", async () => {
+    const say = fakeEngine("say", { failOnCall: 2 });
+    await expect(
+      speak(
+        baseOptions({
+          text: "First point. Second point.",
+          engines: { say, elevenlabs: fakeEngine("elevenlabs") },
+        }),
+      ),
+    ).rejects.toThrow(CouldNotSpeakError);
+    const entries = readLog(spokenLogPathFor(home, new Date()));
+    expect(entries.map((e) => e!.text)).toEqual(["First point."]);
   });
 });
 

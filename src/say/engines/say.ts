@@ -4,7 +4,7 @@
  */
 import { existsSync } from "node:fs";
 import { SYSTEM_VOICE } from "../select.ts";
-import type { SpeechEngine } from "./engine.ts";
+import type { PreparedSpeech, SpeechEngine } from "./engine.ts";
 
 const SAY_BINARY = "/usr/bin/say";
 
@@ -20,11 +20,21 @@ export function sayArgs(text: string, voice: string): string[] {
 export const sayEngine: SpeechEngine = {
   name: "say",
   available: () => existsSync(SAY_BINARY),
-  async speak(text: string, voice: string): Promise<void> {
-    const process = Bun.spawn(sayArgs(text, voice), { stdout: "ignore", stderr: "pipe" });
-    const [code, stderr] = await Promise.all([process.exited, new Response(process.stderr).text()]);
-    if (code !== 0) {
-      throw new Error(`say exited ${code}${stderr.trim() ? `: ${stderr.trim()}` : ""}`);
-    }
+  // `say` synthesises as it plays, so prepare has no work — the two-phase shape exists
+  // for engines that fetch audio; here it just defers the spawn to play time.
+  async prepare(text: string, voice: string): Promise<PreparedSpeech> {
+    return {
+      async play() {
+        const process = Bun.spawn(sayArgs(text, voice), { stdout: "ignore", stderr: "pipe" });
+        const [code, stderr] = await Promise.all([
+          process.exited,
+          new Response(process.stderr).text(),
+        ]);
+        if (code !== 0) {
+          throw new Error(`say exited ${code}${stderr.trim() ? `: ${stderr.trim()}` : ""}`);
+        }
+      },
+      dispose() {},
+    };
   },
 };

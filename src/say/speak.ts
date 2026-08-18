@@ -1,20 +1,27 @@
 /**
- * The C1 pipeline: clean → select voice → take the playback lock → speak → log.
+ * The C1 pipeline: clean → select voice → take the playback lock → speak sentence by
+ * sentence → log each sentence as it is heard.
  *
- * Two invariants drive the shape of this module:
- *   - the ledger records only what was actually heard, so the C2 append happens after
- *     playback resolves and never before;
- *   - the ElevenLabs fallback is audible — when it fails, the sentence is still spoken,
- *     in the macOS voice, and the log names the engine that really spoke.
+ * Invariants that drive the shape of this module:
+ *   - the ledger records only what was actually heard, so each sentence's C2 append
+ *     happens after that sentence's playback resolves and never before;
+ *   - the ticket's remaining_text always starts at the sentence now playing — the
+ *     playing sentence counts as unheard until it finishes (C7);
+ *   - the ElevenLabs fallback is audible and per answer: the first failure drops the
+ *     *rest* of the answer to the macOS voice — mid-answer voice flapping is worse than
+ *     a consistent fallback voice — and the log names the engine that really spoke;
+ *   - sentence i+1 is synthesised while sentence i plays (prefetch, one ahead — more
+ *     buys nothing and risks burning synthesis on an answer about to be barged).
  */
 import { capForSpeech, cleanForSpeech, MAX_SPOKEN_CHARS } from "./clean.ts";
 import { applyProsody } from "./prosody.ts";
+import { splitSentences } from "./sentences.ts";
 import { fallbackSayVoice, selectVoice } from "./select.ts";
 import { acquireLock, LockTimeoutError, type LockOptions } from "./lock.ts";
 import { appendSpokenLine } from "./spoken-log.ts";
-import type { EngineRegistry } from "./engines/engine.ts";
+import type { EngineRegistry, PreparedSpeech } from "./engines/engine.ts";
 import type { Engine } from "../contracts/spoken-log.ts";
-import { playbackLockDir } from "../contracts/playback.ts";
+import { playbackLockDir, type TicketBody } from "../contracts/playback.ts";
 
 export class NothingToSpeakError extends Error {
   override name = "NothingToSpeakError";
@@ -69,7 +76,10 @@ export async function speak(options: SpeakOptions): Promise<SpeakResult> {
         `only the first part will be spoken. Split long content into paragraph-sized bobsay calls.`,
     );
   }
-  const spokenText = applyProsody(cleaned, "plain");
+
+  const sentences = splitSentences(cleaned);
+  const plain = sentences.map((sentence) => applyProsody(sentence, "plain"));
+  const answerId = options.answerId ?? null;
 
   const requested = selectVoice({
     voice: options.voice,
@@ -77,42 +87,116 @@ export async function speak(options: SpeakOptions): Promise<SpeakResult> {
     defaultVoice: options.defaultVoice,
   });
 
-  const answerId = options.answerId ?? null;
+  const bodyFor = (fromIndex: number): TicketBody => ({
+    session_id: options.sessionId,
+    answer_id: answerId,
+    remaining_text: plain.slice(fromIndex).join(" "),
+  });
+
   const lockDir = playbackLockDir(options.homeDir);
-  const handle = await takeLock(
-    lockDir,
-    {
-      ...options.lockOptions,
-      // The ticket body is what `bob hush` reads to kill the right playback (C7).
-      body: { session_id: options.sessionId, answer_id: answerId, remaining_text: spokenText },
-    },
-    warn,
-  );
-  let actual: { engine: Engine; voice: string };
+  const handle = await takeLock(lockDir, { ...options.lockOptions, body: bodyFor(0) }, warn);
+
+  let current = requested;
+  let fellBack = false;
+  let logPath = "";
+  let prefetch: Promise<PreparedSpeech> | null = null;
+
+  const prepareSentence = (index: number): Promise<PreparedSpeech> =>
+    options.engines[current.engine].prepare(
+      applyProsody(sentences[index]!, current.engine),
+      current.voice,
+      {
+        speed: options.speed,
+        // Stitching context (C7/M1): the sentence is synthesised *in* its answer.
+        previousText: index > 0 ? plain.slice(0, index).join(" ") : undefined,
+        nextText: index + 1 < sentences.length ? plain.slice(index + 1).join(" ") : undefined,
+      },
+    );
+
+  const startPrefetch = (index: number): Promise<PreparedSpeech> => {
+    const upcoming = prepareSentence(index);
+    upcoming.catch(() => {}); // inspected when the sentence's turn comes, never unhandled
+    return upcoming;
+  };
+
+  const discard = (overtaken: Promise<PreparedSpeech> | null): void => {
+    overtaken?.then((prepared) => prepared.dispose()).catch(() => {});
+  };
+
+  /** The per-answer fallback: the first ElevenLabs failure drops the rest to say. */
+  const fallBackFor = async (index: number, error: unknown): Promise<PreparedSpeech> => {
+    if (current.engine === "say") {
+      throw couldNotSpeak(fellBack ? "say (fallback)" : "say", error);
+    }
+    warn(`bobsay: ElevenLabs failed (${describe(error)}) — falling back to the say voice.`);
+    current = { engine: "say", voice: fallbackSayVoice(options.defaultVoice) };
+    fellBack = true;
+    try {
+      return await prepareSentence(index);
+    } catch (sayError) {
+      throw couldNotSpeak("say (fallback)", sayError);
+    }
+  };
+
   try {
-    actual = await playWithFallback(cleaned, requested, options, warn);
+    const engine = options.engines[requested.engine];
+    if (!(await engine.available())) {
+      if (requested.engine === "say") {
+        throw couldNotSpeak("say", new Error("the say engine is unavailable"));
+      }
+      warn("bobsay: ElevenLabs is unavailable (no API key?) — falling back to the say voice.");
+      current = { engine: "say", voice: fallbackSayVoice(options.defaultVoice) };
+      fellBack = true;
+    }
+
+    for (let index = 0; index < sentences.length; index++) {
+      let prepared: PreparedSpeech;
+      try {
+        prepared = await (prefetch ?? prepareSentence(index));
+      } catch (error) {
+        prepared = await fallBackFor(index, error);
+      }
+      prefetch = index + 1 < sentences.length ? startPrefetch(index + 1) : null;
+
+      try {
+        await prepared.play();
+      } catch (error) {
+        // The prefetched neighbour was synthesised by the failing engine — let it go.
+        discard(prefetch);
+        prefetch = null;
+        const replacement = await fallBackFor(index, error);
+        try {
+          await replacement.play();
+        } catch (sayError) {
+          throw couldNotSpeak("say (fallback)", sayError);
+        }
+        prefetch = index + 1 < sentences.length ? startPrefetch(index + 1) : null;
+      }
+
+      const spokenAt = now();
+      logPath = appendSpokenLine(
+        options.homeDir,
+        {
+          ts: spokenAt.toISOString(),
+          session_id: options.sessionId,
+          answer_id: answerId,
+          text: plain[index]!,
+          voice: current.voice,
+          engine: current.engine,
+        },
+        spokenAt,
+      );
+      handle?.rewriteBody(bodyFor(index + 1));
+    }
   } finally {
+    discard(prefetch);
     handle?.release();
   }
 
-  const spokenAt = now();
-  const logPath = appendSpokenLine(
-    options.homeDir,
-    {
-      ts: spokenAt.toISOString(),
-      session_id: options.sessionId,
-      answer_id: answerId,
-      text: spokenText,
-      voice: actual.voice,
-      engine: actual.engine,
-    },
-    spokenAt,
-  );
-
   return {
-    spoken_text: spokenText,
-    engine: actual.engine,
-    voice: actual.voice,
+    spoken_text: plain.join(" "),
+    engine: current.engine,
+    voice: current.voice,
     log_path: logPath,
     truncated: dropped > 0,
     answer_id: answerId,
@@ -125,50 +209,15 @@ export async function speak(options: SpeakOptions): Promise<SpeakResult> {
  */
 async function takeLock(
   lockDir: string,
-  lockOptions: LockOptions | undefined,
+  lockOptions: LockOptions,
   warn: (message: string) => void,
 ) {
   try {
-    return await acquireLock(lockDir, lockOptions ?? {});
+    return await acquireLock(lockDir, lockOptions);
   } catch (error) {
     if (!(error instanceof LockTimeoutError)) throw error;
     warn(`bobsay: ${error.message} Speaking anyway — playback may overlap.`);
     return null;
-  }
-}
-
-async function playWithFallback(
-  cleaned: string,
-  requested: { engine: Engine; voice: string },
-  options: SpeakOptions,
-  warn: (message: string) => void,
-): Promise<{ engine: Engine; voice: string }> {
-  const engine = options.engines[requested.engine];
-
-  if (await engine.available()) {
-    try {
-      await engine.speak(applyProsody(cleaned, requested.engine), requested.voice, {
-        speed: options.speed,
-      });
-      return requested;
-    } catch (error) {
-      if (requested.engine === "say") throw couldNotSpeak("say", error);
-      warn(`bobsay: ElevenLabs failed (${describe(error)}) — falling back to the say voice.`);
-    }
-  } else if (requested.engine === "say") {
-    throw couldNotSpeak("say", new Error("the say engine is unavailable"));
-  } else {
-    warn("bobsay: ElevenLabs is unavailable (no API key?) — falling back to the say voice.");
-  }
-
-  const fallback = { engine: "say" as const, voice: fallbackSayVoice(options.defaultVoice) };
-  try {
-    await options.engines.say.speak(applyProsody(cleaned, "say"), fallback.voice, {
-      speed: options.speed,
-    });
-    return fallback;
-  } catch (error) {
-    throw couldNotSpeak("say (fallback)", error);
   }
 }
 

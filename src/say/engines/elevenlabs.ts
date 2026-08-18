@@ -8,7 +8,7 @@
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { SpeakTuning, SpeechEngine } from "./engine.ts";
+import type { PreparedSpeech, SpeakTuning, SpeechEngine } from "./engine.ts";
 
 const API_ROOT = "https://api.elevenlabs.io/v1/text-to-speech";
 const OUTPUT_FORMAT = "mp3_44100_128";
@@ -87,7 +87,9 @@ function nonEmpty(value: string | null | undefined): string | null {
 export const elevenLabsEngine: SpeechEngine = {
   name: "elevenlabs",
   available: async () => (await resolveApiKey({})) !== null,
-  async speak(text: string, voice: string, tuning?: SpeakTuning): Promise<void> {
+  // prepare does the whole network round trip, so a prefetched sentence is a local mp3
+  // by the time its turn comes — playback back-to-back, no synthesis gap between sentences.
+  async prepare(text: string, voice: string, tuning?: SpeakTuning): Promise<PreparedSpeech> {
     const apiKey = await resolveApiKey({});
     if (apiKey === null) throw new Error("no ELEVENLABS_API_KEY in the environment or Keychain");
 
@@ -97,6 +99,8 @@ export const elevenLabsEngine: SpeechEngine = {
       apiKey,
       modelId: nonEmpty(process.env.ELEVENLABS_MODEL_ID) ?? undefined,
       speed: tuning?.speed,
+      previousText: tuning?.previousText,
+      nextText: tuning?.nextText,
     });
 
     const response = await fetch(url, init);
@@ -106,21 +110,27 @@ export const elevenLabsEngine: SpeechEngine = {
     const audio = new Uint8Array(await response.arrayBuffer());
     if (audio.byteLength === 0) throw new Error("ElevenLabs returned no audio");
 
-    await playAudio(audio);
+    const dir = mkdtempSync(join(tmpdir(), "bobsay-"));
+    const file = join(dir, "speech.mp3");
+    writeFileSync(file, audio);
+    const cleanup = () => rmSync(dir, { recursive: true, force: true });
+
+    return {
+      async play() {
+        try {
+          const player = Bun.spawn(["afplay", file], { stdout: "ignore", stderr: "pipe" });
+          const [code, stderr] = await Promise.all([
+            player.exited,
+            new Response(player.stderr).text(),
+          ]);
+          if (code !== 0) {
+            throw new Error(`afplay exited ${code}${stderr.trim() ? `: ${stderr.trim()}` : ""}`);
+          }
+        } finally {
+          cleanup();
+        }
+      },
+      dispose: cleanup,
+    };
   },
 };
-
-async function playAudio(audio: Uint8Array): Promise<void> {
-  const dir = mkdtempSync(join(tmpdir(), "bobsay-"));
-  const file = join(dir, "speech.mp3");
-  try {
-    writeFileSync(file, audio);
-    const player = Bun.spawn(["afplay", file], { stdout: "ignore", stderr: "pipe" });
-    const [code, stderr] = await Promise.all([player.exited, new Response(player.stderr).text()]);
-    if (code !== 0) {
-      throw new Error(`afplay exited ${code}${stderr.trim() ? `: ${stderr.trim()}` : ""}`);
-    }
-  } finally {
-    rmSync(dir, { recursive: true, force: true });
-  }
-}
