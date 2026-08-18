@@ -81,6 +81,26 @@ describe("elevenlabs engine — request", () => {
     expect(unit.init.body).toEqual(plain.init.body);
   });
 
+  test("carries the neighbours for prosody stitching — the sentence is synthesised in its answer", () => {
+    const { init } = buildElevenLabsRequest({
+      voiceId: "abc",
+      text: "Second sentence.",
+      apiKey: "sk-test",
+      previousText: "First sentence.",
+      nextText: "Third sentence.",
+    });
+    const body = JSON.parse(init.body as string);
+    expect(body.previous_text).toBe("First sentence.");
+    expect(body.next_text).toBe("Third sentence.");
+  });
+
+  test("sends no stitching fields when there are no neighbours — a lone sentence stands alone", () => {
+    const { init } = buildElevenLabsRequest({ voiceId: "abc", text: "Ready.", apiKey: "sk-test" });
+    const body = JSON.parse(init.body as string);
+    expect(body).not.toHaveProperty("previous_text");
+    expect(body).not.toHaveProperty("next_text");
+  });
+
   test("honours a model override", () => {
     const { init } = buildElevenLabsRequest({
       voiceId: "abc",

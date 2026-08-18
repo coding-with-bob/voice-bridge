@@ -24,6 +24,10 @@ export function buildElevenLabsRequest(options: {
   apiKey: string;
   modelId?: string;
   speed?: number;
+  /** The sentences of the same answer already spoken — prosody stitching context. */
+  previousText?: string;
+  /** The sentences of the same answer still to come. */
+  nextText?: string;
 }): { url: string; init: RequestInit } {
   // At the default rate no voice_settings go out at all: the voice's stored settings
   // stay authoritative, and the request is byte-identical to the pre-speed era.
@@ -41,6 +45,10 @@ export function buildElevenLabsRequest(options: {
         text: options.text,
         model_id: options.modelId ?? DEFAULT_ELEVENLABS_MODEL,
         ...(overridesRate ? { voice_settings: { speed: options.speed } } : {}),
+        // Stitching: the model synthesises the sentence *in* its answer, not as a
+        // standalone line — independently synthesised sentences reset intonation.
+        ...(options.previousText ? { previous_text: options.previousText } : {}),
+        ...(options.nextText ? { next_text: options.nextText } : {}),
       }),
     },
   };
