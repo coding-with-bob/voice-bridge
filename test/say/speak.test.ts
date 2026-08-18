@@ -452,9 +452,9 @@ describe("speak — the answer id rides the ticket, the ledger, and the result (
     let bodies: Array<ReturnType<typeof parseTicketBody>> = [];
     const say = fakeEngine("say", {
       onSpeak: () => {
-        bodies = readdirSync(lockDir).map((name) =>
-          parseTicketBody(readFileSync(join(lockDir, name), "utf8")),
-        );
+        bodies = readdirSync(lockDir)
+          .filter((name) => name.endsWith(".ticket"))
+          .map((name) => parseTicketBody(readFileSync(join(lockDir, name), "utf8")));
       },
     });
 
@@ -496,7 +496,7 @@ describe("speak — serialisation", () => {
     let ticketsDuringPlayback = 0;
     const say = fakeEngine("say", {
       onSpeak: () => {
-        ticketsDuringPlayback = readdirSync(lockDir).length;
+        ticketsDuringPlayback = readdirSync(lockDir).filter((n) => n.endsWith(".ticket")).length;
       },
     });
 

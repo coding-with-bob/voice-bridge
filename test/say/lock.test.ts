@@ -115,12 +115,42 @@ describe("acquireLock — crash recovery", () => {
   });
 });
 
+describe("acquireLock — the holder marker makes exclusion atomic", () => {
+  test("holding leaves holder.lock naming the ticket; release removes marker and ticket", async () => {
+    const handle = await acquireLock(dir, fast);
+    const names = readdirSync(dir);
+    expect(names).toHaveLength(2);
+    expect(names).toContain("holder.lock");
+    const ticket = names.find((n) => n.endsWith(".ticket"))!;
+    expect(readFileSync(join(dir, "holder.lock"), "utf8")).toBe(ticket);
+
+    handle.release();
+    expect(readdirSync(dir)).toHaveLength(0);
+  });
+
+  test("a marker orphaned by a crash — no ticket behind it — is reaped, not waited on", async () => {
+    writeFileSync(join(dir, "holder.lock"), "000000000000001-0000001-000000.ticket");
+    const handle = await acquireLock(dir, { ...fast, timeoutMs: 2_000 });
+    handle.release();
+    expect(readdirSync(dir)).toHaveLength(0);
+  });
+
+  test("a marker whose ticket is live blocks everyone else, whatever their name", async () => {
+    // A fake foreign holder: fresh ticket + marker, no process. A later arrival must
+    // time out rather than talk over it — the marker, not the name order, is the gate.
+    const foreign = "000000000000001-0000001-000000.ticket";
+    writeFileSync(join(dir, foreign), "");
+    writeFileSync(join(dir, "holder.lock"), foreign);
+    await expect(acquireLock(dir, { ...fast, timeoutMs: 150 })).rejects.toThrow(LockTimeoutError);
+  });
+});
+
 describe("acquireLock — ticket bodies (C7)", () => {
   const body = { session_id: "sess-1", answer_id: "a-1", remaining_text: "Still to speak." };
 
   test("the ticket carries its body as JSON while held", async () => {
     const handle = await acquireLock(dir, { ...fast, body });
-    const tickets = readdirSync(dir);
+    const tickets = readdirSync(dir).filter((n) => n.endsWith(".ticket"));
     expect(tickets).toHaveLength(1);
     expect(parseTicketBody(readFileSync(join(dir, tickets[0]!), "utf8"))).toEqual(body);
     handle.release();
@@ -142,7 +172,7 @@ describe("acquireLock — ticket bodies (C7)", () => {
 
   test("without a body the ticket is written empty, as before", async () => {
     const handle = await acquireLock(dir, fast);
-    const tickets = readdirSync(dir);
+    const tickets = readdirSync(dir).filter((n) => n.endsWith(".ticket"));
     expect(readFileSync(join(dir, tickets[0]!), "utf8")).toBe("");
     handle.release();
   });

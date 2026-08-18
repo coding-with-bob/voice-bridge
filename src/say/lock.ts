@@ -11,6 +11,7 @@
  * heartbeat their own ticket, so "stale" only ever means "nobody is behind this".
  */
 import {
+  existsSync,
   mkdirSync,
   readdirSync,
   readFileSync,
@@ -19,7 +20,7 @@ import {
   utimesSync,
   writeFileSync,
 } from "node:fs";
-import { join } from "node:path";
+import { basename, dirname, join } from "node:path";
 import { parseTicketBody, type TicketBody } from "../contracts/playback.ts";
 
 export class LockTimeoutError extends Error {
@@ -59,6 +60,16 @@ export const DEFAULT_WAIT_CEILING_MS = 1_800_000;
 const DEFAULTS = { staleMs: 60_000, pollMs: 25, timeoutMs: DEFAULT_WAIT_CEILING_MS } as const;
 const TICKET_SUFFIX = ".ticket";
 
+/**
+ * The holder marker: whoever creates it exclusively IS the holder, and it names the
+ * holding ticket. Name order alone cannot carry mutual exclusion — two tickets minted in
+ * the same millisecond sort by pid, and the pid order is not the arrival order, so a
+ * later write could sort ahead of a ticket already inside the critical section (observed
+ * 2026-08-18 as overlapping playback in the cross-process test). The FIFO decides who may
+ * *try*; the atomic `wx` create decides who *holds*.
+ */
+const HOLDER_MARKER = "holder.lock";
+
 /** Distinguishes tickets taken within the same millisecond by the same process. */
 let sequence = 0;
 
@@ -78,7 +89,10 @@ function installCleanup(): void {
   cleanupInstalled = true;
 
   const releaseAll = (): void => {
-    for (const path of heldTickets) remove(path);
+    for (const path of heldTickets) {
+      releaseMarker(dirname(path), basename(path));
+      remove(path);
+    }
     heldTickets.clear();
   };
 
@@ -106,7 +120,7 @@ export async function acquireLock(lockDir: string, options: LockOptions = {}): P
 
   const deadline = Date.now() + timeoutMs;
   try {
-    while (!isHolder(lockDir, ticket, staleMs)) {
+    while (!(isSmallestLive(lockDir, ticket, staleMs) && claimHolder(lockDir, ticket))) {
       if (Date.now() >= deadline) {
         throw new LockTimeoutError(
           `Timed out after ${timeoutMs}ms waiting for the playback lock in ${lockDir}.`,
@@ -170,7 +184,44 @@ function mintTicketName(): string {
   return `${stamp}-${pid}-${seq}${TICKET_SUFFIX}`;
 }
 
-function isHolder(lockDir: string, ticket: string, staleMs: number): boolean {
+/**
+ * Try to become the holder by creating the marker exclusively. On failure, check whether
+ * the standing marker outlived its ticket (a crashed holder whose stale ticket was
+ * pruned) and reap it, so the queue recovers on the next poll.
+ */
+function claimHolder(lockDir: string, ticket: string): boolean {
+  const markerPath = join(lockDir, HOLDER_MARKER);
+  try {
+    writeFileSync(markerPath, ticket, { flag: "wx" });
+    return true;
+  } catch {
+    reapDeadHolder(lockDir, markerPath);
+    return false;
+  }
+}
+
+function reapDeadHolder(lockDir: string, markerPath: string): void {
+  let holderTicket: string;
+  try {
+    holderTicket = readFileSync(markerPath, "utf8");
+  } catch {
+    return; // marker vanished between claim and read — somebody else settled it
+  }
+  if (holderTicket !== "" && existsSync(join(lockDir, holderTicket))) return; // genuinely held
+  remove(markerPath);
+}
+
+/** A holder gives its marker back on the way out — but only its own. */
+function releaseMarker(lockDir: string, ticket: string): void {
+  const markerPath = join(lockDir, HOLDER_MARKER);
+  try {
+    if (readFileSync(markerPath, "utf8") === ticket) unlinkSync(markerPath);
+  } catch {
+    // Already gone.
+  }
+}
+
+function isSmallestLive(lockDir: string, ticket: string, staleMs: number): boolean {
   const cutoff = Date.now() - staleMs;
   const live: string[] = [];
   for (const name of readdirSync(lockDir)) {
@@ -205,6 +256,7 @@ function startHolding(ticketPath: string, staleMs: number): LockHandle {
       released = true;
       clearInterval(heartbeat);
       heldTickets.delete(ticketPath);
+      releaseMarker(dirname(ticketPath), basename(ticketPath));
       remove(ticketPath);
     },
     rewriteBody(body: TicketBody) {

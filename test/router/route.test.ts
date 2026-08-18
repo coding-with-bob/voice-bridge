@@ -308,7 +308,7 @@ describe("route — serialisation", () => {
     let ticketsDuringCall = 0;
     const { deps } = harness({
       modelCall: async () => {
-        ticketsDuringCall = readdirSync(lockDir).length;
+        ticketsDuringCall = readdirSync(lockDir).filter((n) => n.endsWith(".ticket")).length;
         return { raw: JSON.stringify({ action: "clarify", question: "which?" }), latencyMs: 1 };
       },
     });

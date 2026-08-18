@@ -47,7 +47,16 @@ describe("an interrupted holder", () => {
     async () => {
       const lockDir = join(dir, "lock");
       const child = await startHolder(lockDir);
-      expect(readdirSync(lockDir)).toHaveLength(1);
+      try {
+        // The holder's ticket plus the holder marker.
+        const names = readdirSync(lockDir);
+        expect(names).toHaveLength(2);
+        expect(names).toContain("holder.lock");
+        expect(names.filter((n) => n.endsWith(".ticket"))).toHaveLength(1);
+      } catch (error) {
+        child.kill("SIGKILL"); // a failed assertion must not orphan the holder — bun would wait on it forever
+        throw error;
+      }
 
       child.kill("SIGTERM");
       await child.exited;
