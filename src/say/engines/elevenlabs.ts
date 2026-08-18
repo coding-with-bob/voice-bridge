@@ -70,7 +70,8 @@ export function buildElevenLabsRequest(options: {
  * trick fails here: the clips end in a ~20 ms above-threshold codec blip, so the
  * reversed stream does not *start* with silence and nothing gets removed.)
  */
-const TRIM_KEEP_TAIL_S = 0.15;
+// 150ms sounded a touch gappy in the 2026-08-18 smoke test; 80ms accepted as good UX.
+const TRIM_KEEP_TAIL_S = 0.08;
 /** A blip this close to EOF is codec noise, not speech — it must not protect the tail. */
 const TRIM_EDGE_TOLERANCE_S = 0.05;
 

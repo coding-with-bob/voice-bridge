@@ -169,9 +169,9 @@ describe("elevenlabs engine — trailing-silence trim", () => {
   ].join("\n");
 
   test("cuts the dead tail but keeps a natural breath, ignoring the codec-edge blip", () => {
-    // Last silence starts at 3.968; keep 150ms of it. The 20ms blip after its end
+    // Last silence starts at 3.968; keep 80ms of it. The 20ms blip after its end
     // (5.089 vs EOF 5.11) is an artifact, not speech — it must not protect the tail.
-    expect(computeTrimEnd(detectOutput)).toBeCloseTo(3.968481 + 0.15, 5);
+    expect(computeTrimEnd(detectOutput)).toBeCloseTo(3.968481 + 0.08, 5);
   });
 
   test("leaves the tail alone when real sound runs to the end", () => {
@@ -186,8 +186,8 @@ describe("elevenlabs engine — trailing-silence trim", () => {
   test("a tail already at natural length is not worth an ffmpeg pass", () => {
     const shortTail = [
       "  Duration: 00:00:04.00, start: 0.025057, bitrate: 129 kb/s",
-      "[x] silence_start: 3.85",
-      "[x] silence_end: 3.99 | silence_duration: 0.14",
+      "[x] silence_start: 3.91",
+      "[x] silence_end: 3.99 | silence_duration: 0.08",
     ].join("\n");
     expect(computeTrimEnd(shortTail)).toBeNull();
   });
