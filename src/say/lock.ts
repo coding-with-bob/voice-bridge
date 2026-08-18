@@ -138,6 +138,32 @@ export function readTickets(lockDir: string): TicketView[] {
   return tickets;
 }
 
+/**
+ * The ticket that currently holds the lock, or null when nobody does. Reads the marker
+ * and checks the ticket behind it still exists — a marker outliving its ticket is a
+ * crashed holder, not a live one.
+ */
+export function readHolderTicket(lockDir: string): string | null {
+  let named: string;
+  try {
+    named = readFileSync(join(lockDir, HOLDER_MARKER), "utf8").trim();
+  } catch {
+    return null;
+  }
+  if (named === "" || !existsSync(join(lockDir, named))) return null;
+  return named;
+}
+
+/**
+ * Take a ticket out of the queue on its owner's behalf — for `bob hush`, which kills
+ * processes that cannot always clean up after themselves: a SIGKILLed holder, and
+ * waiters whose ticket predates the cleanup registration.
+ */
+export function forceRelease(lockDir: string, ticket: string): void {
+  releaseMarker(lockDir, ticket);
+  remove(join(lockDir, ticket));
+}
+
 function pidFromTicketName(name: string): number | null {
   const match = /^\d+-(\d+)-\d+\.ticket$/.exec(name);
   return match ? Number.parseInt(match[1]!, 10) : null;
