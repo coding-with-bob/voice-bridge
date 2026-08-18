@@ -211,6 +211,32 @@ describe("hush — what does not deserve a record", () => {
 });
 
 describe("hush — the pause marker", () => {
+  /**
+   * Regression (2026-08-18, caught by the M4 machine smoke): the marker used to be written
+   * last, so between the holder releasing its ticket and the marker landing there was a gap
+   * of a few polls — and the next waiter took the lock and started talking over the person.
+   * The window runs from the press, so it goes down before anything is killed.
+   */
+  test("the pause is standing before the first signal is sent", async () => {
+    const name = ticket(1, 1111, body());
+    holderIs(name);
+
+    let pausedAtKill = false;
+    await hush({
+      homeDir: home,
+      now: () => new Date("2026-08-18T12:00:00.000Z"),
+      kill: (pid) => {
+        pausedAtKill = existsSync(pauseMarkerPath(home));
+        living.delete(pid);
+      },
+      alive: (pid) => living.has(pid),
+      graceMs: 60,
+      pollMs: 5,
+    });
+
+    expect(pausedAtKill).toBe(true);
+  });
+
   test("carries the moment it began and a hard deadline three minutes out", async () => {
     const result = await run();
     const marker = PauseMarkerSchema.parse(JSON.parse(readFileSync(pauseMarkerPath(home), "utf8")));

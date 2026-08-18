@@ -54,15 +54,27 @@ export async function hush(options: HushOptions): Promise<HushResult> {
   const pollMs = options.pollMs ?? DEFAULT_POLL_MS;
 
   const lockDir = playbackLockDir(options.homeDir);
+
+  /**
+   * The quiet window goes down first, before anything is killed.
+   *
+   * It has to: the moment the holder dies it releases its ticket, and the next waiter is
+   * polling every few milliseconds. Writing the marker afterwards leaves exactly that gap,
+   * and the queued speech of some other session starts talking over the person mid-press
+   * (observed 2026-08-18, four seconds of it). The window runs from the press.
+   */
+  const paused = writePauseMarker(
+    options.homeDir,
+    now(),
+    options.deadlineMs ?? PAUSE_DEADLINE_MS,
+  );
+
   const tickets = readTickets(lockDir);
   const holderName = readHolderTicket(lockDir);
   const holder = tickets.find((ticket) => ticket.name === holderName) ?? null;
 
-  const pause = () =>
-    writePauseMarker(options.homeDir, now(), options.deadlineMs ?? PAUSE_DEADLINE_MS);
-
   if (holder === null) {
-    // Nothing is playing, but the pause still goes down: the person is about to speak,
+    // Nothing was playing — the pause above is the whole job: the person is about to speak,
     // and a queued answer must not start talking over them mid-utterance.
     return {
       killed: false,
@@ -71,7 +83,7 @@ export async function hush(options: HushOptions): Promise<HushResult> {
       interrupted_text: null,
       unplayed_texts: [],
       recorded: false,
-      paused_until: pause().deadline,
+      paused_until: paused.deadline,
     };
   }
 
@@ -108,7 +120,7 @@ export async function hush(options: HushOptions): Promise<HushResult> {
     interrupted_text: holder.body?.remaining_text ?? null,
     unplayed_texts: unplayedTexts,
     recorded,
-    paused_until: pause().deadline,
+    paused_until: paused.deadline,
   };
 }
 
