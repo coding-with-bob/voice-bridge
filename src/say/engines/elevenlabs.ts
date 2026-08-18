@@ -8,6 +8,7 @@
 import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { runPlayer } from "../player.ts";
 import type { PreparedSpeech, SpeakTuning, SpeechEngine } from "./engine.ts";
 
 const API_ROOT = "https://api.elevenlabs.io/v1/text-to-speech";
@@ -222,14 +223,7 @@ export const elevenLabsEngine: SpeechEngine = {
       requestId: response.headers.get("request-id") ?? undefined,
       async play() {
         try {
-          const player = Bun.spawn(["afplay", file], { stdout: "ignore", stderr: "pipe" });
-          const [code, stderr] = await Promise.all([
-            player.exited,
-            new Response(player.stderr).text(),
-          ]);
-          if (code !== 0) {
-            throw new Error(`afplay exited ${code}${stderr.trim() ? `: ${stderr.trim()}` : ""}`);
-          }
+          await runPlayer(["afplay", file]);
         } finally {
           cleanup();
         }

@@ -4,6 +4,7 @@
  */
 import { existsSync } from "node:fs";
 import { SYSTEM_VOICE } from "../select.ts";
+import { runPlayer } from "../player.ts";
 import type { PreparedSpeech, SpeechEngine } from "./engine.ts";
 
 const SAY_BINARY = "/usr/bin/say";
@@ -24,16 +25,7 @@ export const sayEngine: SpeechEngine = {
   // for engines that fetch audio; here it just defers the spawn to play time.
   async prepare(text: string, voice: string): Promise<PreparedSpeech> {
     return {
-      async play() {
-        const process = Bun.spawn(sayArgs(text, voice), { stdout: "ignore", stderr: "pipe" });
-        const [code, stderr] = await Promise.all([
-          process.exited,
-          new Response(process.stderr).text(),
-        ]);
-        if (code !== 0) {
-          throw new Error(`say exited ${code}${stderr.trim() ? `: ${stderr.trim()}` : ""}`);
-        }
-      },
+      play: () => runPlayer(sayArgs(text, voice)),
       dispose() {},
     };
   },
