@@ -86,3 +86,32 @@ Hammerspoon launches tasks with a minimal environment, exactly like Raycast and 
 launcher owns the environment, not the machine. So `heybob-ptt.lua` uses absolute paths only,
 and `heybob-ptt.sh` exports the same explicit PATH as `raycast/heybob.sh`, for the same
 reasons documented there (including `llmp claude` and `/usr/sbin` for `lsof`).
+
+## The daily state backup (`heybob-backup.lua` + `backup-bob-state.sh`)
+
+Hammerspoon also carries a second, unrelated job: a daily snapshot of `~/bob` into
+`iCloud/Backup/hey-bob-state/`. What it protects is the spoken ledger and the logs — runtime
+data that is deliberately gitignored, and that nothing else on this machine backs up. The
+ledger is the router's long-term memory: it is what lets an utterance reach back to "that
+subtitle thing from July".
+
+It lives here rather than in launchd because of a measured macOS restriction (2026-08-18):
+
+| Who runs it | reads iCloud | writes iCloud |
+|---|---|---|
+| a terminal-descended process | yes | yes |
+| **a launchd agent** | **no** — "Operation not permitted" | yes |
+| Hammerspoon, and processes it spawns | yes | yes |
+
+macOS asks the *person* for iCloud access in a dialog. A scheduled agent has nobody to ask,
+so the system denies it silently — and while it may still write, it cannot list what it
+already wrote, which is enough to break any backup that prunes or verifies. Hammerspoon was
+granted the permission once, and its child processes inherit it.
+
+The schedule is an hourly *check*, not an alarm clock: the script skips while a snapshot
+younger than 20 hours exists, so a machine asleep at any given hour costs nothing. Retention
+keeps the newest 14. `.git` is excluded (already on the private GitHub remote and in a `gbb`
+bundle, and a half-synced object store is a broken repo); `state/` is excluded as scratch.
+
+Run it by hand with `bash hammerspoon/backup-bob-state.sh --force`, or through Hammerspoon
+with `hs -c "heybobBackupNow()"`. It logs every run to `~/Library/Logs/heybob-backup.log`.
