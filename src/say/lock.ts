@@ -10,8 +10,17 @@
  * so a killed `bobsay` cannot wedge the queue. Live holders and live waiters both
  * heartbeat their own ticket, so "stale" only ever means "nobody is behind this".
  */
-import { mkdirSync, readdirSync, statSync, unlinkSync, utimesSync, writeFileSync } from "node:fs";
+import {
+  mkdirSync,
+  readdirSync,
+  readFileSync,
+  statSync,
+  unlinkSync,
+  utimesSync,
+  writeFileSync,
+} from "node:fs";
 import { join } from "node:path";
+import { parseTicketBody, type TicketBody } from "../contracts/playback.ts";
 
 export class LockTimeoutError extends Error {
   override name = "LockTimeoutError";
@@ -28,6 +37,8 @@ export interface LockOptions {
   pollMs?: number;
   /** How long to wait for the lock before giving up. */
   timeoutMs?: number;
+  /** C7 metadata written into the ticket file, so `bob hush` can see who speaks what. */
+  body?: TicketBody;
 }
 
 /**
@@ -86,7 +97,7 @@ export async function acquireLock(lockDir: string, options: LockOptions = {}): P
   mkdirSync(lockDir, { recursive: true });
   const ticket = mintTicketName();
   const ticketPath = join(lockDir, ticket);
-  writeFileSync(ticketPath, "");
+  writeFileSync(ticketPath, options.body ? JSON.stringify(options.body) : "");
 
   const deadline = Date.now() + timeoutMs;
   try {
@@ -105,6 +116,46 @@ export async function acquireLock(lockDir: string, options: LockOptions = {}): P
   }
 
   return startHolding(ticketPath, staleMs);
+}
+
+export interface TicketView {
+  /** The ticket's filename — also its FIFO rank. */
+  name: string;
+  /** The owning process, parsed from the filename. */
+  pid: number;
+  /** The C7 body, or null when the body is unreadable (old format, partial write). */
+  body: TicketBody | null;
+}
+
+/**
+ * A read-only view of the queue, in FIFO order, for `bob hush` and friends.
+ * Does no pruning and takes no side effects — observation must not race the queue.
+ */
+export function readTickets(lockDir: string): TicketView[] {
+  let names: string[];
+  try {
+    names = readdirSync(lockDir).filter((name) => name.endsWith(TICKET_SUFFIX));
+  } catch {
+    return []; // no directory yet means nobody has ever queued
+  }
+  const tickets: TicketView[] = [];
+  for (const name of names.sort()) {
+    const pid = pidFromTicketName(name);
+    if (pid === null) continue;
+    let raw: string;
+    try {
+      raw = readFileSync(join(lockDir, name), "utf8");
+    } catch {
+      continue; // released between readdir and read; the queue moved on
+    }
+    tickets.push({ name, pid, body: parseTicketBody(raw) });
+  }
+  return tickets;
+}
+
+function pidFromTicketName(name: string): number | null {
+  const match = /^\d+-(\d+)-\d+\.ticket$/.exec(name);
+  return match ? Number.parseInt(match[1]!, 10) : null;
 }
 
 function mintTicketName(): string {

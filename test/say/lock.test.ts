@@ -1,9 +1,15 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { mkdtempSync, rmSync, writeFileSync, utimesSync, readdirSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync, utimesSync, readdirSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { acquireLock, DEFAULT_WAIT_CEILING_MS, LockTimeoutError } from "../../src/say/lock.ts";
+import {
+  acquireLock,
+  readTickets,
+  DEFAULT_WAIT_CEILING_MS,
+  LockTimeoutError,
+} from "../../src/say/lock.ts";
 import { MAX_SPOKEN_CHARS } from "../../src/say/clean.ts";
+import { parseTicketBody } from "../../src/contracts/playback.ts";
 
 let dir: string;
 
@@ -106,6 +112,64 @@ describe("acquireLock — crash recovery", () => {
       LockTimeoutError,
     );
     held.release();
+  });
+});
+
+describe("acquireLock — ticket bodies (C7)", () => {
+  const body = { session_id: "sess-1", answer_id: "a-1", remaining_text: "Still to speak." };
+
+  test("the ticket carries its body as JSON while held", async () => {
+    const handle = await acquireLock(dir, { ...fast, body });
+    const tickets = readdirSync(dir);
+    expect(tickets).toHaveLength(1);
+    expect(parseTicketBody(readFileSync(join(dir, tickets[0]!), "utf8"))).toEqual(body);
+    handle.release();
+  });
+
+  test("a waiting ticket carries its body too — hush must see queued metadata", async () => {
+    const held = await acquireLock(dir, { ...fast, body });
+    const waiterBody = { session_id: "sess-2", answer_id: null, remaining_text: "Queued." };
+    const waiter = acquireLock(dir, { ...fast, body: waiterBody }).then((h) => h.release());
+    await sleep(30);
+
+    const bodies = readTickets(dir).map((t) => t.body);
+    expect(bodies).toContainEqual(body);
+    expect(bodies).toContainEqual(waiterBody);
+
+    held.release();
+    await waiter;
+  });
+
+  test("without a body the ticket is written empty, as before", async () => {
+    const handle = await acquireLock(dir, fast);
+    const tickets = readdirSync(dir);
+    expect(readFileSync(join(dir, tickets[0]!), "utf8")).toBe("");
+    handle.release();
+  });
+});
+
+describe("readTickets", () => {
+  test("returns name, pid from the filename, and the parsed body, in FIFO order", async () => {
+    writeFileSync(
+      join(dir, "000000000000002-0000042-000000.ticket"),
+      JSON.stringify({ session_id: null, answer_id: null, remaining_text: "second" }),
+    );
+    writeFileSync(join(dir, "000000000000001-0000007-000000.ticket"), "");
+
+    const tickets = readTickets(dir);
+    expect(tickets.map((t) => t.pid)).toEqual([7, 42]);
+    expect(tickets[0]!.name).toBe("000000000000001-0000007-000000.ticket");
+    expect(tickets[0]!.body).toBeNull(); // old-format empty body: metadata-less, not an error
+    expect(tickets[1]!.body?.remaining_text).toBe("second");
+  });
+
+  test("ignores non-ticket files — pause.json shares the directory", () => {
+    writeFileSync(join(dir, "pause.json"), "{}");
+    expect(readTickets(dir)).toEqual([]);
+  });
+
+  test("an empty or missing directory reads as an empty queue", () => {
+    expect(readTickets(join(dir, "nope"))).toEqual([]);
   });
 });
 
