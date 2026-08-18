@@ -239,6 +239,47 @@ describe("acquireLock — the quiet window (C7c)", () => {
     handle.release();
   });
 
+  /**
+   * Regression (2026-08-18, caught by the M4 manual smoke — nothing at all was heard after
+   * the press). Exemption from the pause is not enough on its own: the ack also arrives
+   * *after* the speech the pause is holding back, so plain FIFO puts it behind a ticket
+   * that cannot move until the pause lifts — and the pause lifts only once the ack has been
+   * spoken. Deadlock, resolved three minutes later by the deadline. While the window
+   * stands, the exempt ticket takes precedence over the queue it is there to end.
+   */
+  test("the ack overtakes the queue the pause is holding back — or nothing ever ends it", async () => {
+    const blocked = acquireLock(dir, { ...fast, timeoutMs: 3_000 }).then((handle) => {
+      handle.release();
+      return "queued speech";
+    });
+    await sleep(30); // it is first in line before the press happens
+    marker(60_000);
+
+    const ack = await acquireLock(dir, { ...fast, pauseExempt: true, timeoutMs: 1_000 });
+    ack.release();
+    rmSync(join(dir, "pause.json"));
+
+    expect(await blocked).toBe("queued speech"); // and it plays afterwards, not before
+  });
+
+  test("two exempt acquirers still never overlap — the holder marker is the real gate", async () => {
+    marker(60_000);
+    let inside = 0;
+    let maxInside = 0;
+    await Promise.all(
+      Array.from({ length: 3 }, () =>
+        acquireLock(dir, { ...fast, pauseExempt: true, timeoutMs: 2_000 }).then(async (handle) => {
+          inside += 1;
+          maxInside = Math.max(maxInside, inside);
+          await sleep(10);
+          inside -= 1;
+          handle.release();
+        }),
+      ),
+    );
+    expect(maxInside).toBe(1);
+  });
+
   test("an expired marker is deleted, said out loud on stderr, and stops blocking", async () => {
     marker(-1_000); // a roundtrip that crashed a second ago
     const warnings: string[] = [];

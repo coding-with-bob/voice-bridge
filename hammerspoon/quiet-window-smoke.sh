@@ -12,6 +12,8 @@ set -uo pipefail
 cd "$(dirname "$0")/.." || exit 1
 
 LOG="$HOME/bob/spoken/$(date +%F).jsonl"
+# Only this run's lines belong in the summary; the ledger is a long chronicle.
+STARTED_AT=$(date -u +%Y-%m-%dT%H:%M:%S)
 
 bun src/cli/bobsay.ts --session smoke-answer --answer smoke-a \
   "This is the answer you are meant to interrupt, and it runs for a while on purpose. \
@@ -33,8 +35,8 @@ echo "Playing. Press the PTT chord mid-answer, say something short, release."
 wait
 
 echo
-echo "--- what was actually heard, in order:"
-grep -E '"session_id":"(smoke-answer|smoke-other|null)"|"session_id":null' "$LOG" | tail -8 |
+echo "--- what was actually heard, in order (this run only):"
+awk -v since="$STARTED_AT" -F'"' '$4 >= since' "$LOG" |
   sed 's/.*"ts":"\([^"]*\)".*"session_id":\("[^"]*"\|null\).*"text":"\([^"]*\)".*/  \1 [\2] \3/'
 echo "--- the cut, as recorded:"
 tail -1 "$HOME/bob/logs/interruptions.jsonl" | cut -c1-200

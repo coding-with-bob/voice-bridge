@@ -96,10 +96,23 @@ export async function acquireLock(lockDir: string, options: LockOptions = {}): P
   writeFileSync(ticketPath, options.body ? JSON.stringify(options.body) : "");
 
   const warn = options.warn ?? ((message: string) => console.error(message));
-  const mayHold = () =>
-    (options.pauseExempt === true || !pauseStands(lockDir, warn)) &&
-    isSmallestLive(lockDir, ticket, staleMs) &&
-    claimHolder(lockDir, ticket);
+
+  /**
+   * FIFO decides who may try; the holder marker decides who holds — except while the quiet
+   * window stands, when the exempt ack also **overtakes** the queue.
+   *
+   * Exemption alone is not enough, and the difference is a deadlock: the ack always arrives
+   * after the speech the window is holding back, so plain FIFO puts it behind a ticket that
+   * cannot move until the window lifts — and the window lifts only once the ack has been
+   * spoken. Nothing at all was heard after a real press until the deadline broke the tie
+   * (2026-08-18). Overtaking costs no safety: `claimHolder` is still the exclusion.
+   */
+  const mayHold = (): boolean => {
+    if (pauseStands(lockDir, warn)) {
+      return options.pauseExempt === true && claimHolder(lockDir, ticket);
+    }
+    return isSmallestLive(lockDir, ticket, staleMs) && claimHolder(lockDir, ticket);
+  };
 
   const deadline = Date.now() + timeoutMs;
   try {
