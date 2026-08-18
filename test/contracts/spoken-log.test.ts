@@ -30,6 +30,12 @@ describe("C2 spoken log entry", () => {
   test("rejects an unknown engine", () => {
     expect(() => SpokenLogEntrySchema.parse({ ...entry, engine: "festival" })).toThrow();
   });
+
+  test("accepts an answer id, a null one, and its absence — old lines stay valid", () => {
+    expect(SpokenLogEntrySchema.parse({ ...entry, answer_id: "a-1" }).answer_id).toBe("a-1");
+    expect(SpokenLogEntrySchema.parse({ ...entry, answer_id: null }).answer_id).toBeNull();
+    expect(SpokenLogEntrySchema.parse(entry).answer_id).toBeUndefined();
+  });
 });
 
 describe("spokenLogPathFor", () => {

@@ -1,8 +1,9 @@
-# Interface contracts (C1–C6)
+# Interface contracts (C1–C7)
 
-The six seams between the pieces of the voice bridge, pinned before the pieces are built so
+The seams between the pieces of the voice bridge, pinned before the pieces are built so
 each increment can be tested against the contract rather than against another piece's internals.
-Authority: `~/dev/bob-jarvis/design/voice-bridge-implementation-plan.md` §2.
+Authority: `~/dev/bob-jarvis/design/voice-bridge-implementation-plan.md` §2; C7 and the barge-in
+amendments to C1/C2/C5/C6: `~/dev/bob-jarvis/design/voice-barge-in-plan.md` §2.
 
 **Changing a contract is a deliberate commit** touching the contract module and every consumer —
 never a silent drift.
@@ -15,19 +16,27 @@ never a silent drift.
 | C4 | Omnigent pool client surface | prose, below · implemented in `src/omnigent/client.ts` (M2) |
 | C5 | router decision JSON + decision log | [`decision.ts`](./decision.ts) |
 | C6 | speak-on-finish convention | prose, below · canonical text in `~/bob/CLAUDE.md` |
+| C7 | playback queue metadata, interruption record, pause protocol | [`playback.ts`](./playback.ts) |
 
 ---
 
 ## C1 — `bobsay` CLI contract
 
 ```
-bobsay [--session <id>] [--voice <engine:voice>] [--engine elevenlabs|say] [--json] "<text>"
+bobsay [--session <id>] [--answer <id>] [--voice <engine:voice>] [--engine elevenlabs|say] [--json] "<text>"
 ```
 
 - **Exit 0** = spoken (or queued and then spoken). **Nonzero** = could not speak at all, after fallback.
   Sub-codes: `1` = playback failed even after the fallback; `2` = the call was rejected before any
   audio (bad voice reference, contradicting `--engine`, malformed config, nothing speakable left).
-- `--json` emits `{spoken_text, engine, voice, log_path, truncated}`.
+- `--json` emits `{spoken_text, engine, voice, log_path, truncated, answer_id}`.
+- `--answer <id>` (added 2026-08-18, barge-in): the answer this call is a chunk of — a free-form
+  token minted by the caller, shared by every chunk of one chained answer. Recorded in the C7
+  ticket body and the C2 line. Absent → `answer_id: null`: a single-call answer needs no id to be
+  interruptible as a unit, because the chunk *is* the answer.
+- **A killed bobsay silences its player** (obligation added 2026-08-18, barge-in): SIGTERM/SIGINT
+  cleanup must kill the spawned `afplay`/`say` child before exiting, not just release the ticket.
+  This is what makes `bob hush` = "SIGTERM the holder pid" sufficient.
 - Side effects, in this order: play audio (serialized via a file lock) → **on successful playback**
   append the C2 log line. The log records only what was actually heard; a failed playback writes no line.
 - A single call is capped at `MAX_SPOKEN_CHARS` (5,000 — runaway protection, roughly five minutes of
@@ -128,3 +137,28 @@ the C1 cap of that era cut both chunks mid-sentence. The first "paragraph-sized 
 this amendment over-corrected: a four-call recap measured 9–12 s of silence between chunks, ~2–3 s
 of it TTS fetch and the rest the session composing its next command — hence fewest-calls, and
 chaining so no thinking pause lands mid-answer. Same migration note as above.
+
+## C7 — playback queue metadata, interruption record, pause protocol
+
+Types, schemas and constants in [`playback.ts`](./playback.ts); added 2026-08-18 for barge-in.
+Three parts:
+
+- **Ticket bodies.** A ticket in `~/bob/state/playback/` carries a JSON `TicketBody`
+  (`session_id`, `answer_id`, `remaining_text`) instead of the old empty body. `remaining_text`
+  starts as the full cleaned, capped text and is rewritten by the holder at every sentence
+  boundary — which makes `bob hush` the single writer of the interruption record: everything it
+  needs is on disk, at sentence precision. A body that fails to parse is treated as metadata-less
+  (kill-eligible as holder, never matched by answer filters); an old-format ticket must not wedge
+  the queue.
+- **Interruption record.** `bob hush` appends one `InterruptionRecord` line to
+  `~/bob/logs/interruptions.jsonl` per barge-in that actually killed something. The record stores
+  only the *unheard* side — the heard side is the C2 ledger's job, and the two must not disagree.
+  Boundary, pinned: **the sentence playing at the moment of the kill counts as unheard** (it heads
+  `interrupted_text` and has no ledger line) — a half-heard sentence is better repeated than
+  dropped.
+- **Pause protocol.** While a non-expired `~/bob/state/playback/pause.json` exists, no ordinary
+  ticket becomes holder; a pause-exempt ticket (router ack path only) ignores it. Lifecycle:
+  `bob hush` writes the marker; `bob route` deletes it after the ack has been spoken (success or
+  failure); `bob resume` deletes it explicitly (the PTT cancel path); the deadline
+  (`PAUSE_DEADLINE_MS`, 180 s) is the safety net, and expiry is loud — the next acquirer that
+  finds an expired marker deletes it and warns on stderr.

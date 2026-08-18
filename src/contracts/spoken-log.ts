@@ -20,6 +20,8 @@ export const SpokenLogEntrySchema = z.object({
   ts: z.iso.datetime(),
   /** The session that spoke, or null for sessionless calls such as router acks. */
   session_id: z.string().min(1).nullable(),
+  /** The answer this line is a chunk of (C7); absent on lines written before barge-in. */
+  answer_id: z.string().min(1).nullable().optional(),
   /** The text as it was actually spoken (cleaned, prosody applied). */
   text: z.string(),
   /** Engine-specific voice identifier (a `say` voice name or an ElevenLabs voice id). */
