@@ -17,6 +17,8 @@ import { collectLogEvents, renderLogEvent, ALL_SOURCES } from "../router/log-vie
 import { runGc, type GcResult } from "../gc/run.ts";
 import { appendGcEntry } from "../gc/log.ts";
 import { speak } from "../say/speak.ts";
+import { hush } from "../say/hush.ts";
+import { clearPauseMarker } from "../say/pause.ts";
 import { sayEngine } from "../say/engines/say.ts";
 import { elevenLabsEngine, resolveApiKey } from "../say/engines/elevenlabs.ts";
 import { transcribeFile } from "../stt/scribe.ts";
@@ -121,6 +123,44 @@ async function runRoute(utterance: string, dryRun: boolean): Promise<RouteResult
     ...(dryRun ? { dryRun: true } : {}),
   });
 }
+
+program
+  .command("hush")
+  .description("stop the answer that is playing and pause the queue — PTT fires this before recording")
+  .option("--json", "emit the result as JSON")
+  .action(async (options: { json?: boolean }) => {
+    try {
+      const { config } = loadConfig();
+      const result = await hush({ homeDir: config.home_dir });
+      if (options.json) console.log(JSON.stringify(result));
+      else if (!result.killed) console.log("nothing was playing; queue paused");
+      else {
+        const who = result.session_id ?? "(sessionless)";
+        const alsoDropped =
+          result.unplayed_texts.length > 0 ? `, ${result.unplayed_texts.length} queued` : "";
+        console.log(`hushed ${who}${alsoDropped}; queue paused until ${result.paused_until}`);
+      }
+    } catch (error) {
+      console.error(`bob hush: ${error instanceof Error ? error.message : String(error)}`);
+      process.exit(isSetupError(error) ? 2 : 1);
+    }
+  });
+
+program
+  .command("resume")
+  .description("lift the quiet window left by `bob hush` (the PTT cancel path)")
+  .option("--json", "emit the result as JSON")
+  .action((options: { json?: boolean }) => {
+    try {
+      const { config } = loadConfig();
+      const lifted = clearPauseMarker(config.home_dir);
+      if (options.json) console.log(JSON.stringify({ lifted }));
+      else console.log(lifted ? "queue resumed" : "no pause was standing");
+    } catch (error) {
+      console.error(`bob resume: ${error instanceof Error ? error.message : String(error)}`);
+      process.exit(isSetupError(error) ? 2 : 1);
+    }
+  });
 
 program
   .command("doctor")
