@@ -38,6 +38,7 @@ program
         sessionId: (options.session as string | undefined) ?? null,
         answerId: (options.answer as string | undefined) ?? null,
         homeDir: config.home_dir,
+        ownerName: config.owner_name,
         defaultVoice: config.default_voice,
         speed: config.elevenlabs_speed,
         voice: options.voice as string | undefined,

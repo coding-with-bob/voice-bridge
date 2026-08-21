@@ -40,6 +40,12 @@ export interface SpeakOptions {
   /** The answer this call is a chunk of (C1 --answer); null/absent when the chunk is the answer. */
   answerId?: string | null;
   homeDir: string;
+  /**
+   * C3 `owner_name` — who a barged answer's stderr says pressed push-to-talk. Configuration
+   * rather than a constant, so the note a session reads names the person actually at the
+   * microphone instead of whoever this bridge was first written for.
+   */
+  ownerName: string;
   defaultVoice: string;
   engines: EngineRegistry;
   voice?: string;
@@ -97,7 +103,7 @@ export async function speak(options: SpeakOptions): Promise<SpeakResult> {
 
   const lockDir = playbackLockDir(options.homeDir);
   // From here until playback is over, a signal may be `bob hush` rather than a failure.
-  setSignalExit(() => interruptedExit(options.homeDir));
+  setSignalExit(() => interruptedExit(options.homeDir, options.ownerName));
   const handle = await takeLock(lockDir, { ...options.lockOptions, body: bodyFor(0) }, warn);
 
   let current = requested;
@@ -224,15 +230,15 @@ export async function speak(options: SpeakOptions): Promise<SpeakResult> {
  * what happened. Nothing is hidden by it: how much was actually heard is in the C2 ledger,
  * sentence by sentence, and what was not is in the C7 interruption record.
  */
-function interruptedExit(homeDir: string): SignalExit | null {
+function interruptedExit(homeDir: string, ownerName: string): SignalExit | null {
   if (!pauseIsStanding(homeDir)) return null; // an ordinary kill: report it as one
   return {
     code: 0,
     message:
-      "bobsay: interrupted — Felho pressed push-to-talk while this was playing, so the rest " +
-      "was not heard. This is NOT a failure: do not run it again and do not repeat the answer " +
-      "unprompted. His own message is already on its way, and it will say what he wants " +
-      "instead and where the cut fell.",
+      `bobsay: interrupted — ${ownerName} pressed push-to-talk while this was playing, so the ` +
+      "rest was not heard. This is NOT a failure: do not run it again and do not repeat the " +
+      "answer unprompted. Their own message is already on its way, and it will say what they " +
+      "want instead and where the cut fell.",
   };
 }
 

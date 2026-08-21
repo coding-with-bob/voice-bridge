@@ -129,6 +129,12 @@ export interface ExecuteDeps {
   /** C3 `session_effort`, for the same reason. */
   sessionEffort: string;
   /**
+   * C3 `owner_name` — who the metadata block says may not be watching a terminal. It travels
+   * on every dispatch because the block does, and it comes from config so a fresh install
+   * never tells its sessions somebody else's name.
+   */
+  ownerName: string;
+  /**
    * The C6 interruption note, when this dispatch goes back to a session whose answer was
    * cut off. Only a `continue` can carry one — a session created by this decision has no
    * interrupted answer of its own.
@@ -156,7 +162,12 @@ export async function executeDecision(
       // question answered in markdown, in silence).
       const posted = await deps.client.postMessage(
         decision.session_id,
-        routedMessage(decision.session_id, decision.request, deps.interruptionNote ?? null),
+        routedMessage(
+          decision.session_id,
+          decision.request,
+          deps.ownerName,
+          deps.interruptionNote ?? null,
+        ),
       );
       return {
         targetSessionId: decision.session_id,
@@ -174,7 +185,10 @@ export async function executeDecision(
         effort: decision.effort ?? deps.sessionEffort,
         appendSystemPrompt: deps.conventionText,
       });
-      const posted = await deps.client.postMessage(id, routedMessage(id, decision.request));
+      const posted = await deps.client.postMessage(
+        id,
+        routedMessage(id, decision.request, deps.ownerName),
+      );
       return { targetSessionId: id, executed: true, pendingId: posted.pendingId };
     }
 

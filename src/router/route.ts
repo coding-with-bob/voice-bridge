@@ -154,6 +154,7 @@ async function routeUnderLock(
         permissionMode: PERMISSION_MODE,
         sessionModel: deps.config.session_model,
         sessionEffort: deps.config.session_effort,
+        ownerName: deps.config.owner_name,
         interruptionNote: noteForInterrupted(decision, context),
       });
       executed = outcome.executed;

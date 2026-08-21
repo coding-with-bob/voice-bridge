@@ -29,6 +29,13 @@ export const BobConfigSchema = z.strictObject({
   elevenlabs_speed: z.number().min(0.7).max(1.2),
   /** The state home. Defaults to wherever this config was found; declaring it is optional. */
   home_dir: z.string().min(1),
+  /**
+   * What to call the person at the microphone. It travels in the C6 metadata block ("<name>
+   * may not be watching any terminal") and in what a barged `bobsay` prints, so a session
+   * talking about the owner has a name rather than a guess. The default names nobody on
+   * purpose: an install that never set it still reads as a sentence.
+   */
+  owner_name: z.string().min(1),
   omnigent_url: z.url(),
   /** Router decision model. Starts at a capable tier; downscaling is a later, evidence-based call. */
   router_model: z.string().min(1),
@@ -86,16 +93,17 @@ export const DEFAULT_CONFIG: Omit<BobConfig, "home_dir"> = {
   followup_window_min: 30,
   gc_idle_hours: 3,
   candidate_window_days: 14,
-  default_voice: "say:Tünde",
+  owner_name: "the owner",
+  default_voice: "say:Samantha",
   elevenlabs_speed: 1.0,
   omnigent_url: "http://127.0.0.1:6767",
   router_model: "claude-opus-5",
   session_model: "claude-opus-5",
   session_effort: "high",
   session_models: ["claude-opus-5", "claude-fable-5", "claude-sonnet-5"],
-  clarify_fallback_text: "Nem értettem, hova tartozik ez. Mondanád másképp?",
+  clarify_fallback_text: "I didn't catch where that belongs. Could you say it another way?",
   correction_window_min: 10,
-  correction_blocked_text: "Ezt már nem tudtam visszavonni, csak szóltam a sessionnek.",
-  correction_undone_text: "Az előzőt visszavontam.",
-  correction_asleep_text: "Az a session már aludt, nem ébresztettem fel érte.",
+  correction_blocked_text: "I couldn't undo that any more — I just told the session.",
+  correction_undone_text: "I've undone the previous one.",
+  correction_asleep_text: "That session was already asleep, so I didn't wake it for this.",
 };

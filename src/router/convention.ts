@@ -72,12 +72,15 @@ export function readConvention(conventionFile: string): string {
  * The question rule (2026-08-17) rides along for the same reason, and earns the length the
  * same way: a session that parks on a question nobody heard is stopped until someone thinks
  * to look at a terminal.
+ * The owner's name is configuration (C3 `owner_name`), not a constant: this text ships to
+ * whoever installs the bridge, and "someone else's name may not be watching any terminal"
+ * is a sentence no session should ever be handed.
  * Invariant: no `]` before the closing bracket — the strip regex cuts at the first one.
  */
-export function metadataBlock(sessionId: string): string {
+export function metadataBlock(sessionId: string, ownerName: string): string {
   return (
     `[bob metadata — not part of the request: your session id is ${sessionId}. ` +
-    `This request was spoken — Felho may not be watching any terminal — so on top of ` +
+    `This request was spoken — ${ownerName} may not be watching any terminal — so on top of ` +
     `whatever you print, speak your answer: bobsay --session ${sessionId} "<what to say>". ` +
     `One plain sentence when you report on work; the whole answer when the answer itself ` +
     `is what was asked to be heard. Speak a question out loud before you park the turn on it]`
@@ -138,6 +141,7 @@ const INTERRUPTION_NOTE_SHAPE = /\[bob interruption[^\]]*\]/g;
 export function routedMessage(
   sessionId: string,
   request: string,
+  ownerName: string,
   note: string | null = null,
 ): string {
   const cleaned = request
@@ -145,6 +149,7 @@ export function routedMessage(
     .replace(INTERRUPTION_NOTE_SHAPE, "")
     .replace(/\s+/g, " ")
     .trim();
-  const blocks = note === null ? [metadataBlock(sessionId)] : [metadataBlock(sessionId), note];
+  const block = metadataBlock(sessionId, ownerName);
+  const blocks = note === null ? [block] : [block, note];
   return `${blocks.join("\n\n")}\n\n${cleaned}`;
 }

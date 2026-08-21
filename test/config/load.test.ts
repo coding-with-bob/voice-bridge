@@ -44,6 +44,30 @@ describe("loadConfig — happy paths", () => {
     expect(loaded.config.omnigent_url).toBe(DEFAULT_CONFIG.omnigent_url);
   });
 
+  /**
+   * The baked-in defaults are what a machine with no `defaults.yaml` runs on, so they must
+   * not carry the first owner's name, language or voice. Anyone's own file overrides all of
+   * it; these are the values a stranger hears on the first run.
+   */
+  test("the shipped defaults name nobody and speak the stock voice", () => {
+    const { config } = loadConfig({ homeDir: dir });
+    expect(config.owner_name).toBe("the owner");
+    expect(config.default_voice).toBe("say:Samantha"); // a macOS voice present out of the box
+    const spoken = [
+      config.clarify_fallback_text,
+      config.correction_undone_text,
+      config.correction_blocked_text,
+      config.correction_asleep_text,
+    ];
+    for (const text of spoken) expect(text).not.toMatch(/[áéíóöőúüűÁÉÍÓÖŐÚÜŰ]/);
+  });
+
+  test("owner_name is a plain overridable string", () => {
+    expect(loadConfig({ homeDir: dir }).config.owner_name).toBe(DEFAULT_CONFIG.owner_name);
+    write('owner_name: "Ada"\n');
+    expect(loadConfig({ homeDir: dir }).config.owner_name).toBe("Ada");
+  });
+
   test("a partial file overrides only what it names", () => {
     write("followup_window_min: 45\n");
     const { config, source } = loadConfig({ homeDir: dir });
@@ -133,6 +157,15 @@ describe("loadConfig — malformed config is a hard, explained error", () => {
   test("an out-of-range value", () => {
     write("gc_idle_hours: -3\n");
     expectConfigError(() => loadConfig({ homeDir: dir }), "gc_idle_hours");
+  });
+
+  /**
+   * An empty owner_name would put a blank where a name belongs in every metadata block —
+   * "  may not be watching any terminal". Better to refuse the file than to ship the gap.
+   */
+  test("an owner_name that is empty", () => {
+    write('owner_name: ""\n');
+    expectConfigError(() => loadConfig({ homeDir: dir }), "owner_name");
   });
 
   test("an unknown key — typos must not be silently ignored", () => {

@@ -2,8 +2,9 @@
 
 The seams between the pieces of the voice bridge, pinned before the pieces are built so
 each increment can be tested against the contract rather than against another piece's internals.
-Authority: `~/dev/bob-jarvis/design/voice-bridge-implementation-plan.md` §2; C7 and the barge-in
-amendments to C1/C2/C5/C6: `~/dev/bob-jarvis/design/voice-barge-in-plan.md` §2.
+Authority: this file — the single public record of the contracts; the design work that
+produced them (including C7 and the barge-in amendments to C1/C2/C5/C6) lives in the
+author's private planning notes.
 
 **Changing a contract is a deliberate commit** touching the contract module and every consumer —
 never a silent drift.
@@ -99,8 +100,11 @@ after `createSession` returns. The router therefore prefixes **every message it 
 `continue` included, not just the first on spawn — with a delimited metadata block:
 
 ```
-[bob metadata — not part of the request: your session id is <id>. This request was spoken — Felho may not be watching any terminal — so on top of whatever you print, speak your answer: bobsay --session <id> "<what to say>". One plain sentence when you report on work; the whole answer when the answer itself is what was asked to be heard. Speak a question out loud before you park the turn on it]
+[bob metadata — not part of the request: your session id is <id>. This request was spoken — <owner_name> may not be watching any terminal — so on top of whatever you print, speak your answer: bobsay --session <id> "<what to say>". One plain sentence when you report on work; the whole answer when the answer itself is what was asked to be heard. Speak a question out loud before you park the turn on it]
 ```
+
+`<owner_name>` is C3 configuration, not a constant: the block ships to whoever installs the bridge,
+and a session must never be handed someone else's name as fact.
 
 The convention states that this block is transport metadata: never quote it, never treat it as
 content — so a "write this request verbatim to a file" task does not capture it.
@@ -132,7 +136,7 @@ deliberately a convention first: no evidence exists that sessions ignore it, bec
 been asked for. It rides the block as well as the convention, on the 2026-08-16 reasoning above —
 the same lengthening of the block, bought for the same reason. If a spoken turn is later found
 opening a question dialog with no `bobsay` in front of it, the deterministic form is a `PreToolUse`
-hook on `AskUserQuestion` (`~/dev/bob-jarvis/design/voice-bridge-one-pager.md`, Q5).
+hook on `AskUserQuestion`.
 
 **Speech comes in two sizes** (amended 2026-08-15, same day, second failure). The convention
 distinguishes *reporting on work* — one plain sentence, as before — from *the answer itself being
