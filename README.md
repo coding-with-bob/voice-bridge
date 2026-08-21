@@ -5,6 +5,8 @@ hotkey, say a sentence, release: the request lands in the session that already h
 for it — or in a fresh one born in the right directory — and that session does the work with its
 own tools and speaks the answer back.
 
+[![The whole design on one page](docs/voice-bridge-overview.png)](https://coding-with-bob.github.io/voice-bridge/voice-bridge-visual.html)
+
 It is not a cloud service and it has no daemon of its own. Two CLIs and a hotkey: `bob route`
 decides, dispatches, acknowledges and exits; `bobsay` is what sessions call to speak. The session
 pool underneath is [Omnigent](https://github.com/omnigent-ai/omnigent), adopted stock — we
@@ -17,10 +19,11 @@ Omnigent's own server and host daemon, and they are acceptable precisely because
 loopback only, which is why `bob doctor` re-verifies the bind on every run instead of trusting
 the config file that asked for it.
 
-**The picture page.** [`docs/voice-bridge-visual.html`](docs/voice-bridge-visual.html) is the
-whole design on one page — the pieces, the routing walk-throughs, the barge-in — drawn rather
-than written. GitHub shows its source; open it in a browser
-(`open docs/voice-bridge-visual.html` from the clone).
+**The picture page.** The diagram above is the cover of
+[the full picture page](https://coding-with-bob.github.io/voice-bridge/voice-bridge-visual.html) —
+the whole design, the routing walk-throughs and the barge-in, drawn rather than written. The
+same page lives in the repo as [`docs/voice-bridge-visual.html`](docs/voice-bridge-visual.html)
+(`open` it from a clone; GitHub shows the source).
 
 ---
 
