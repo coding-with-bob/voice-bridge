@@ -4,22 +4,27 @@
   job that stops sessions is something you should switch on knowingly.
 
   Install:
-    cp launchd/com.felho.bob-gc.plist ~/Library/LaunchAgents/
-    launchctl load ~/Library/LaunchAgents/com.felho.bob-gc.plist
+    cp launchd/com.heybob.gc.plist ~/Library/LaunchAgents/
+    launchctl load ~/Library/LaunchAgents/com.heybob.gc.plist
   Remove:
-    launchctl unload ~/Library/LaunchAgents/com.felho.bob-gc.plist
+    launchctl unload ~/Library/LaunchAgents/com.heybob.gc.plist
 
   The hour is 04:37 rather than 04:00 on purpose: nothing else on this machine wakes at an
   odd minute, so the sweep never contends with the tidy-on-the-hour crowd.
+
+  launchd offers no $HOME expansion, so every /Users/YOURNAME/... path below must be
+  replaced with a real absolute path before this is loaded: the `bob` binary is wherever
+  `bun link` shimmed it (typically ~/.local/bin/bob), and the log paths belong under your
+  state home (BOB_HOME if you set it, otherwise ~/bob).
 -->
 <plist version="1.0">
 <dict>
   <key>Label</key>
-  <string>com.felho.bob-gc</string>
+  <string>com.heybob.gc</string>
 
   <key>ProgramArguments</key>
   <array>
-    <string>/Users/felho/.local/bin/bob</string>
+    <string>/Users/YOURNAME/.local/bin/bob</string>
     <string>gc</string>
   </array>
 
@@ -27,7 +32,7 @@
   <dict>
     <!-- launchd starts with almost no PATH; `bob`'s shebang needs bun on it. -->
     <key>PATH</key>
-    <string>/Users/felho/.local/bin:/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+    <string>/Users/YOURNAME/.local/bin:/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
   </dict>
 
   <key>StartCalendarInterval</key>
@@ -39,9 +44,9 @@
   </dict>
 
   <key>StandardOutPath</key>
-  <string>/Users/felho/bob/logs/gc-launchd.log</string>
+  <string>/Users/YOURNAME/bob/logs/gc-launchd.log</string>
   <key>StandardErrorPath</key>
-  <string>/Users/felho/bob/logs/gc-launchd.log</string>
+  <string>/Users/YOURNAME/bob/logs/gc-launchd.log</string>
 
   <key>RunAtLoad</key>
   <false/>

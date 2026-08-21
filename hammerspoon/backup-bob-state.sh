@@ -21,7 +21,9 @@
 
 set -uo pipefail
 
-SOURCE="$HOME/bob"
+# Same resolution order as the state home everywhere else in this project (src/config/load.ts):
+# `BOB_HOME` if set, otherwise `~/bob`.
+SOURCE="${BOB_HOME:-$HOME/bob}"
 DEST="$HOME/Library/Mobile Documents/com~apple~CloudDocs/Backup/hey-bob-state"
 LOG="$HOME/Library/Logs/heybob-backup.log"
 MIN_AGE_HOURS=20

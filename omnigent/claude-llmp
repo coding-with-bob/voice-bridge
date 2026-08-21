@@ -21,7 +21,7 @@
 #
 #   harness:
 #     claude-native:
-#       command: /Users/felho/dev/hey-bob/omnigent/claude-llmp
+#       command: /path/to/voice-bridge/omnigent/claude-llmp
 
 LLMP="${LLMP_BIN:-$(command -v llmp 2>/dev/null)}"
 [ -x "$LLMP" ] || LLMP="$HOME/.local/bin/llmp"

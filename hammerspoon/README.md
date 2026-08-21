@@ -8,14 +8,12 @@ never collide with an app shortcut, and releasing *any* one of the three keys en
 
 **The same chord is the interrupt.** Press it while Bob is talking and the answer stops at once
 — no second shortcut to learn — and the queue stays quiet until the router has acknowledged what
-you said instead. Design and mechanism:
-[voice-barge-in-plan.md](../../bob-jarvis/design/voice-barge-in-plan.md).
+you said instead.
 
 This exists because the Raycast+Monologue entry is a four-step gesture, and because the two
 alternatives fail for a specific reason: a Raycast extension cannot see a key release at all,
 and silence auto-stop cuts exactly where a non-native speaker pauses to think. Under a held
-key, pauses are free. (The full research is in bob-jarvis:
-`design/voice-bridge-implementation-plan.md` §5.)
+key, pauses are free.
 
 ## Install
 
@@ -98,9 +96,10 @@ reasons documented there (including `llmp claude` and `/usr/sbin` for `lsof`).
 
 ## The daily state backup (`heybob-backup.lua` + `backup-bob-state.sh`)
 
-Hammerspoon also carries a second, unrelated job: a daily snapshot of `~/bob` into
-`iCloud/Backup/hey-bob-state/`. What it protects is the spoken ledger and the logs — runtime
-data that is deliberately gitignored, and that nothing else on this machine backs up. The
+Hammerspoon also carries a second, unrelated job: a daily snapshot of the state home
+(`BOB_HOME`, or `~/bob` if unset) into `iCloud/Backup/hey-bob-state/`. What it protects is
+the spoken ledger and the logs — runtime data that is deliberately gitignored, and that
+nothing else on this machine backs up. The
 ledger is the router's long-term memory: it is what lets an utterance reach back to "that
 subtitle thing from July".
 
