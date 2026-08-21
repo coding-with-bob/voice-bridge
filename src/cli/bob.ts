@@ -15,6 +15,7 @@ import { readConvention, ConventionError } from "../router/convention.ts";
 import { listProjectDirs, PROJECTS_ROOT } from "../router/projects.ts";
 import { collectLogEvents, renderLogEvent, ALL_SOURCES } from "../router/log-view.ts";
 import { runGc, type GcResult } from "../gc/run.ts";
+import { runInit, type InitResult } from "../init/run.ts";
 import { appendGcEntry } from "../gc/log.ts";
 import { speak } from "../say/speak.ts";
 import { hush } from "../say/hush.ts";
@@ -30,6 +31,22 @@ program
   .name("bob")
   .description("Hey Bob voice bridge — routes utterances into the Omnigent session pool")
   .version(version);
+
+program
+  .command("init")
+  .description("create the state home: its directories, the C6 convention file and a documented defaults.yaml")
+  .option("--home <dir>", "state home to set up (default: $BOB_HOME, else ~/bob)")
+  .option("--json", "emit the result as JSON")
+  .action((options: { home?: string; json?: boolean }) => {
+    try {
+      const result = runInit(options.home === undefined ? {} : { homeDir: options.home });
+      if (options.json) console.log(JSON.stringify(result, null, 2));
+      else printInitResult(result);
+    } catch (error) {
+      console.error(`bob init: ${error instanceof Error ? error.message : String(error)}`);
+      process.exit(isSetupError(error) ? 2 : 1);
+    }
+  });
 
 program
   .command("route")
@@ -133,6 +150,7 @@ async function runRoute(utterance: string, dryRun: boolean): Promise<RouteResult
         text,
         sessionId: null,
         homeDir: config.home_dir,
+        ownerName: config.owner_name,
         defaultVoice: config.default_voice,
         speed: config.elevenlabs_speed,
         engines: { say: sayEngine, elevenlabs: elevenLabsEngine },
@@ -284,7 +302,7 @@ await program.parseAsync(
   separatePositional(process.argv.slice(2), {
     booleanOptions: ["--json", "--dry-run", "--quick", "--stt-only", "--spoken", "--decisions",
                      "--gc", "--reachbacks", "-h", "--help", "-V", "--version"],
-    valueOptions: ["-n", "--count"],
+    valueOptions: ["-n", "--count", "--home"],
     skipPositionals: 1,
   }),
   { from: "user" },
@@ -304,6 +322,23 @@ function printRouteResult(result: RouteResult, dryRun: boolean): void {
   console.log(`${dryRun ? "would say" : "said"}: ${result.spoken}`);
   if (result.fallback_reason !== undefined) console.log(`reason: ${result.fallback_reason}`);
   console.log(`decided in ${result.latency_ms}ms · context: ${result.context_digest}`);
+}
+
+/**
+ * Created or not, every item is named: a second run is meant to read as an inventory of the
+ * home, not as a silent success you have to trust.
+ */
+function printInitResult(result: InitResult): void {
+  for (const item of result.items) {
+    console.log(`${item.status.padEnd(7)} ${item.path}`);
+    if (item.status === "created") console.log(`            → ${item.purpose}`);
+  }
+  console.log(
+    result.created === 0
+      ? `\n${result.home_dir} was already complete — nothing changed.`
+      : `\nCreated ${result.created} of ${result.items.length} items in ${result.home_dir}.` +
+          `\nNext: check the platform with \`bob doctor\`.`,
+  );
 }
 
 function printGcResult(result: GcResult, dryRun: boolean, idleHours: number): void {
