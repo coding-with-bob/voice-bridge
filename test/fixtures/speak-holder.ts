@@ -33,7 +33,8 @@ await speak({
   sessionId: "s-fixture",
   answerId: "a-fixture",
   homeDir,
-  defaultVoice: "say:Tünde",
+  ownerName: "Ada",
+  defaultVoice: "say:Samantha",
   engines: { say: stalling, elevenlabs: stalling },
   lockOptions: { pollMs: 5 },
 });

@@ -10,7 +10,7 @@ const daysAgo = (days: number) => Math.floor(NOW.getTime() / 1000) - days * 86_4
 
 const session = (overrides: Partial<PoolSession> & { id: string }): PoolSession => ({
   title: "a session",
-  workspace: "/Users/felho/dev/craft",
+  workspace: "/Users/sam/dev/website",
   status: "idle",
   agent_name: "claude-native-ui",
   created_at: minutesAgo(60),
@@ -25,7 +25,7 @@ const spoken = (session_id: string | null, text: string, minutes: number): Spoke
   ts: new Date(NOW.getTime() - minutes * 60_000).toISOString(),
   session_id,
   text,
-  voice: "Tünde",
+  voice: "Samantha",
   engine: "say",
 });
 
@@ -33,11 +33,11 @@ const input = (overrides: Partial<ContextInput> = {}): ContextInput => ({
   sessions: [],
   spoken: [],
   dispatches: [],
-  projectsRoot: "/Users/felho/dev",
+  projectsRoot: "/Users/sam/dev",
   sessionModels: ["claude-opus-5", "claude-fable-5"],
   sessionModel: "claude-opus-5",
-  projectDirs: ["craft", "confpipeline"],
-  homeDir: "/Users/felho/bob",
+  projectDirs: ["website", "pipeline"],
+  homeDir: "/Users/sam/bob",
   followupWindowMin: 30,
   candidateWindowDays: 14,
   now: NOW,
@@ -94,14 +94,14 @@ describe("candidate selection", () => {
     const context = buildContext(
       input({
         sessions: [
-          session({ id: "s1", title: "subtitle pipeline", workspace: "/Users/felho/dev/craft" }),
+          session({ id: "s1", title: "subtitle pipeline", workspace: "/Users/sam/dev/website" }),
         ],
       }),
     );
     expect(context.candidates[0]).toMatchObject({
       id: "s1",
       title: "subtitle pipeline",
-      workspace: "/Users/felho/dev/craft",
+      workspace: "/Users/sam/dev/website",
       status: "idle",
       minutes_since_active: 10,
     });

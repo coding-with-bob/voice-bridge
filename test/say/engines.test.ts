@@ -12,7 +12,7 @@ import { SYSTEM_VOICE } from "../../src/say/select.ts";
 
 describe("say engine — argv", () => {
   test("names the voice when there is one", () => {
-    expect(sayArgs("Hello there.", "Tünde")).toEqual(["say", "-v", "Tünde", "--", "Hello there."]);
+    expect(sayArgs("Hello there.", "Samantha")).toEqual(["say", "-v", "Samantha", "--", "Hello there."]);
   });
 
   test("lets macOS choose when the voice is the system sentinel", () => {
@@ -24,13 +24,13 @@ describe("say engine — argv", () => {
    * `say` reads "-5 degrees tonight" as a flag and speaks nothing.
    */
   test("puts the text behind --, so a leading hyphen is spoken rather than parsed", () => {
-    const args = sayArgs("-5 degrees tonight", "Tünde");
+    const args = sayArgs("-5 degrees tonight", "Samantha");
     expect(args.at(-2)).toBe("--");
     expect(args.at(-1)).toBe("-5 degrees tonight");
   });
 
   test("passes the text as one argument — never through a shell", () => {
-    const args = sayArgs('$(rm -rf ~); echo "gotcha"', "Tünde");
+    const args = sayArgs('$(rm -rf ~); echo "gotcha"', "Samantha");
     expect(args).toHaveLength(5);
     expect(args.at(-1)).toBe('$(rm -rf ~); echo "gotcha"');
   });

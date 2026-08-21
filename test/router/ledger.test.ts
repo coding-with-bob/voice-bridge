@@ -24,7 +24,7 @@ const line = (ts: string, session: string | null, text: string) => ({
   ts,
   session_id: session,
   text,
-  voice: "Tünde",
+  voice: "Samantha",
   engine: "say",
 });
 

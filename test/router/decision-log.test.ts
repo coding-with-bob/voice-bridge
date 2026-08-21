@@ -84,7 +84,7 @@ describe("dispatchEvents", () => {
   test("a new session's dispatch counts too — the target is recorded, not inferred", () => {
     const events = dispatchEvents([
       entry({
-        decision: { action: "new", cwd: "/Users/felho/dev/craft", request: "r", ack: "a" },
+        decision: { action: "new", cwd: "/Users/sam/dev/website", request: "r", ack: "a" },
         target_session_id: "fresh",
         executed: true,
       }),

@@ -15,7 +15,7 @@
  * first, the change second.
  */
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
-import { homedir, tmpdir } from "node:os";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { route, type RouteDeps, type RouteResult } from "../../src/router/route.ts";
 import { claudeCliCall } from "../../src/router/model.ts";
@@ -26,14 +26,34 @@ import type { SpokenLogEntry } from "../../src/contracts/spoken-log.ts";
 import type { DecisionLogEntry } from "../../src/contracts/decision.ts";
 import type { CreateSessionOptions } from "../../src/omnigent/client.ts";
 
-/** Real directories, so a placement decision survives the executability check. */
-export const PROJECT_DIRS = ["craft", "confpipeline", "hey-bob"];
-export const PROJECTS_ROOT = join(homedir(), "dev");
+/**
+ * The placement vocabulary the rows route against.
+ *
+ * The executability gate refuses a cwd that does not exist, so a placement row collapses to
+ * clarify unless the directory is really there. It is still checked against real directories
+ * — but they are the suite's own, created by `setupProjectDirs` under a throwaway root,
+ * rather than whatever the machine running the tests happens to keep in `~/dev`.
+ */
+export const PROJECTS_ROOT = mkdtempSync(join(tmpdir(), "bob-projects-"));
+export const PROJECT_DIRS = ["website", "pipeline", "notes"];
+
+/** Creates the fixture projects the placement rows name. Call once, before the rows run. */
+export function setupProjectDirs(): void {
+  for (const name of PROJECT_DIRS) mkdirSync(join(PROJECTS_ROOT, name), { recursive: true });
+}
+
+/** Removes the throwaway projects root, fixtures and all. */
+export function cleanupProjectDirs(): void {
+  rmSync(PROJECTS_ROOT, { recursive: true, force: true });
+}
 
 export interface RoutingExpectation {
   action: "continue" | "new" | "clarify" | "undo";
   session_id?: string;
-  /** Compared after `~`/root expansion, so rows stay readable. */
+  /**
+   * Written as `HOME_DIR` or a join onto `PROJECTS_ROOT` and expanded before the comparison,
+   * so rows stay readable however the throwaway roots of a given run are named.
+   */
   cwd?: string;
   reachback?: boolean;
   /** The model the session is actually born on — config default when the row expects none. */
@@ -85,7 +105,7 @@ function spoke(session_id: string, text: string, at: number): SpokenLogEntry {
     ts: new Date(at * 1000).toISOString(),
     session_id,
     text,
-    voice: "Tünde",
+    voice: "Samantha",
     engine: "say",
   };
 }
@@ -93,14 +113,14 @@ function spoke(session_id: string, text: string, at: number): SpokenLogEntry {
 const subtitleSession = session({
   id: "sess-subtitles",
   title: "subtitle timing pass",
-  workspace: join(PROJECTS_ROOT, "craft"),
+  workspace: join(PROJECTS_ROOT, "website"),
   updated_at: minutesAgo(4),
 });
 
 const invoiceSession = session({
   id: "sess-invoices",
   title: "invoice export",
-  workspace: join(PROJECTS_ROOT, "confpipeline"),
+  workspace: join(PROJECTS_ROOT, "pipeline"),
   updated_at: daysAgo(3),
 });
 
@@ -147,7 +167,7 @@ export const ROUTING_TABLE: RoutingCase[] = [
       session({
         id: "sess-invoices",
         title: "invoice export",
-        workspace: join(PROJECTS_ROOT, "confpipeline"),
+        workspace: join(PROJECTS_ROOT, "pipeline"),
         updated_at: daysAgo(6),
       }),
     ],
@@ -164,11 +184,11 @@ export const ROUTING_TABLE: RoutingCase[] = [
   {
     name: "a named project starts a session in that directory",
     sessions: [],
-    utterance: "in confpipeline, list the documents in the docs folder",
+    utterance: "in pipeline, list the documents in the docs folder",
     scripted: [
-      { action: "new", cwd: join(PROJECTS_ROOT, "confpipeline"), request: "list the documents in the docs folder", ack: "ok" },
+      { action: "new", cwd: join(PROJECTS_ROOT, "pipeline"), request: "list the documents in the docs folder", ack: "ok" },
     ],
-    expect: { action: "new", cwd: join(PROJECTS_ROOT, "confpipeline") },
+    expect: { action: "new", cwd: join(PROJECTS_ROOT, "pipeline") },
   },
   {
     // Free speech, no prefix convention: the model is named mid-sentence like any other
@@ -176,19 +196,19 @@ export const ROUTING_TABLE: RoutingCase[] = [
     // request — the session is told what to do, never what to run on.
     name: "a model named in the utterance is honoured and stripped from the request",
     sessions: [],
-    utterance: "in confpipeline, csináld Fable-lel: listázd a docs mappa fájljait",
+    utterance: "in pipeline, csináld Fable-lel: listázd a docs mappa fájljait",
     scripted: [
       {
         action: "new",
-        cwd: join(PROJECTS_ROOT, "confpipeline"),
+        cwd: join(PROJECTS_ROOT, "pipeline"),
         request: "listázd a docs mappa fájljait",
-        ack: "Új session Fable-lel: confpipeline.",
+        ack: "Új session Fable-lel: pipeline.",
         model: "claude-fable-5",
       },
     ],
     expect: {
       action: "new",
-      cwd: join(PROJECTS_ROOT, "confpipeline"),
+      cwd: join(PROJECTS_ROOT, "pipeline"),
       model: "claude-fable-5",
       requestExcludes: ["Fable", "fable"],
     },
@@ -406,7 +426,7 @@ export const ROUTING_TABLE: RoutingCase[] = [
       session({
         id: "sess-july",
         title: "conference badge printing",
-        workspace: join(PROJECTS_ROOT, "craft"),
+        workspace: join(PROJECTS_ROOT, "website"),
         updated_at: daysAgo(38),
         created_at: daysAgo(39),
       }),

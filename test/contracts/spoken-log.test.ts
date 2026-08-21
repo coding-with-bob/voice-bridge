@@ -10,7 +10,7 @@ describe("C2 spoken log entry", () => {
     ts: "2026-08-15T10:00:00.000Z",
     session_id: "sess-1",
     text: "The subtitles are done.",
-    voice: "Tünde",
+    voice: "Samantha",
     engine: "say",
   };
 
@@ -40,14 +40,14 @@ describe("C2 spoken log entry", () => {
 
 describe("spokenLogPathFor", () => {
   test("groups by local calendar day under <home>/spoken", () => {
-    const path = spokenLogPathFor("/Users/felho/bob", new Date(2026, 7, 15, 23, 30));
-    expect(path).toBe("/Users/felho/bob/spoken/2026-08-15.jsonl");
+    const path = spokenLogPathFor("/Users/sam/bob", new Date(2026, 7, 15, 23, 30));
+    expect(path).toBe("/Users/sam/bob/spoken/2026-08-15.jsonl");
   });
 
   test("uses local time, not UTC, so an evening line lands on the day it was heard", () => {
     // 2026-08-15 23:30 local (CEST) is already 2026-08-16 in UTC.
-    const path = spokenLogPathFor("/Users/felho/bob", new Date("2026-08-15T23:30:00+02:00"));
-    expect(path).toBe("/Users/felho/bob/spoken/2026-08-15.jsonl");
+    const path = spokenLogPathFor("/Users/sam/bob", new Date("2026-08-15T23:30:00+02:00"));
+    expect(path).toBe("/Users/sam/bob/spoken/2026-08-15.jsonl");
   });
 });
 
@@ -57,7 +57,7 @@ describe("parseSpokenLogLine", () => {
       ts: "2026-08-15T10:00:00.000Z",
       session_id: null,
       text: "Working on it.",
-      voice: "Tünde",
+      voice: "Samantha",
       engine: "say",
     });
     expect(parseSpokenLogLine(line)?.text).toBe("Working on it.");

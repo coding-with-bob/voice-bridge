@@ -10,7 +10,7 @@ import {
 describe("parseVoiceRef", () => {
   test("splits engine from voice", () => {
     expect(parseVoiceRef("elevenlabs:abc123")).toEqual({ engine: "elevenlabs", voice: "abc123" });
-    expect(parseVoiceRef("say:Tünde")).toEqual({ engine: "say", voice: "Tünde" });
+    expect(parseVoiceRef("say:Samantha")).toEqual({ engine: "say", voice: "Samantha" });
   });
 
   test("keeps colons inside the voice id", () => {
@@ -19,17 +19,17 @@ describe("parseVoiceRef", () => {
 
   test("rejects an unknown engine or a missing half", () => {
     expect(() => parseVoiceRef("festival:bob")).toThrow(VoiceSelectionError);
-    expect(() => parseVoiceRef("Tünde")).toThrow(VoiceSelectionError);
+    expect(() => parseVoiceRef("Samantha")).toThrow(VoiceSelectionError);
     expect(() => parseVoiceRef("say:")).toThrow(VoiceSelectionError);
   });
 });
 
 describe("selectVoice", () => {
-  const sayDefault = "say:Tünde";
+  const sayDefault = "say:Samantha";
   const elevenDefault = "elevenlabs:abc123";
 
   test("falls back to the configured default when nothing is asked for", () => {
-    expect(selectVoice({ defaultVoice: sayDefault })).toEqual({ engine: "say", voice: "Tünde" });
+    expect(selectVoice({ defaultVoice: sayDefault })).toEqual({ engine: "say", voice: "Samantha" });
   });
 
   test("--voice wins over the default", () => {
@@ -54,7 +54,7 @@ describe("selectVoice", () => {
   test("--engine alone keeps the default's voice when the engines match", () => {
     expect(selectVoice({ engine: "say", defaultVoice: sayDefault })).toEqual({
       engine: "say",
-      voice: "Tünde",
+      voice: "Samantha",
     });
   });
 
@@ -74,7 +74,7 @@ describe("selectVoice", () => {
 
 describe("fallbackSayVoice", () => {
   test("reuses the configured say voice when there is one", () => {
-    expect(fallbackSayVoice("say:Tünde")).toBe("Tünde");
+    expect(fallbackSayVoice("say:Samantha")).toBe("Samantha");
   });
 
   test("uses the system voice when the default is an ElevenLabs one", () => {

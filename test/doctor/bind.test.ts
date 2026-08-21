@@ -7,25 +7,25 @@ const header =
 describe("parseListenHosts", () => {
   test("reads the bind address off a LISTEN row", () => {
     const output =
-      header + "python3.1 12617 felho   19u  IPv4 0x1342e3de      0t0  TCP 127.0.0.1:6767 (LISTEN)\n";
+      header + "python3.1 12617 sam   19u  IPv4 0x1342e3de      0t0  TCP 127.0.0.1:6767 (LISTEN)\n";
     expect(parseListenHosts(output)).toEqual(["127.0.0.1"]);
   });
 
   test("ignores established connections — only what is listening matters", () => {
     const output =
       header +
-      "python3.1 12617 felho    4u  IPv4 0xf7d7f3a8      0t0  TCP 127.0.0.1:6767->127.0.0.1:58635 (ESTABLISHED)\n" +
-      "python3.1 12617 felho   19u  IPv4 0x1342e3de      0t0  TCP 127.0.0.1:6767 (LISTEN)\n";
+      "python3.1 12617 sam    4u  IPv4 0xf7d7f3a8      0t0  TCP 127.0.0.1:6767->127.0.0.1:58635 (ESTABLISHED)\n" +
+      "python3.1 12617 sam   19u  IPv4 0x1342e3de      0t0  TCP 127.0.0.1:6767 (LISTEN)\n";
     expect(parseListenHosts(output)).toEqual(["127.0.0.1"]);
   });
 
   test("reads an IPv6 loopback bind", () => {
-    const output = header + "python3.1 12617 felho 19u IPv6 0x1 0t0 TCP [::1]:6767 (LISTEN)\n";
+    const output = header + "python3.1 12617 sam 19u IPv6 0x1 0t0 TCP [::1]:6767 (LISTEN)\n";
     expect(parseListenHosts(output)).toEqual(["::1"]);
   });
 
   test("reads a wide-open bind", () => {
-    const output = header + "python3.1 12617 felho 19u IPv4 0x1 0t0 TCP *:6767 (LISTEN)\n";
+    const output = header + "python3.1 12617 sam 19u IPv4 0x1 0t0 TCP *:6767 (LISTEN)\n";
     expect(parseListenHosts(output)).toEqual(["*"]);
   });
 

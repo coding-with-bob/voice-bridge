@@ -16,16 +16,16 @@ afterEach(() => {
 
 describe("listProjectDirs", () => {
   test("lists directory names, sorted", () => {
-    mkdirSync(join(root, "craft"));
+    mkdirSync(join(root, "website"));
     mkdirSync(join(root, "avocado"));
-    expect(listProjectDirs(root)).toEqual(["avocado", "craft"]);
+    expect(listProjectDirs(root)).toEqual(["avocado", "website"]);
   });
 
   test("skips files and hidden entries", () => {
-    mkdirSync(join(root, "craft"));
+    mkdirSync(join(root, "website"));
     mkdirSync(join(root, ".hidden"));
     writeFileSync(join(root, "notes.md"), "not a project");
-    expect(listProjectDirs(root)).toEqual(["craft"]);
+    expect(listProjectDirs(root)).toEqual(["website"]);
   });
 
   test("a missing root is empty, not an error — everything then lands at home", () => {

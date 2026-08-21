@@ -60,6 +60,9 @@ describe("a bobsay killed by bob hush", () => {
     expect(stderr).toContain("interrupted");
     expect(stderr).toContain("NOT a failure");
     expect(stderr).toContain("do not run it again");
+    // Who did the pressing comes from C3 `owner_name` (the fixture's is "Ada"), so the note
+    // a session reads names the person at the microphone rather than a name baked in here.
+    expect(stderr).toContain("Ada pressed push-to-talk");
   }, 30_000);
 
   test("the same on SIGINT — the Ctrl-C an impatient person types", async () => {

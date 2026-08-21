@@ -7,7 +7,7 @@ const hoursAgo = (hours: number) => Math.floor(NOW.getTime() / 1000) - hours * 3
 
 const session = (overrides: Partial<PoolSession> & { id: string }): PoolSession => ({
   title: "a session",
-  workspace: "/Users/felho/dev/craft",
+  workspace: "/Users/sam/dev/website",
   status: "idle",
   agent_name: "claude-native-ui",
   created_at: hoursAgo(10),

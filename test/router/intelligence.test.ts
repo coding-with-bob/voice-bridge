@@ -33,7 +33,7 @@ const daysAgo = (days: number) => seconds(NOW) - days * 86_400;
 
 const session = (overrides: Partial<PoolSession> & { id: string }): PoolSession => ({
   title: "a session",
-  workspace: "/Users/felho/dev/craft",
+  workspace: "/Users/sam/dev/website",
   status: "idle",
   agent_name: "claude-native-ui",
   created_at: daysAgo(1),
@@ -48,7 +48,7 @@ function writeLedger(day: string, entries: Array<Partial<SpokenLogEntry> & { ses
   const lines = entries.map((entry) =>
     JSON.stringify({
       ts: `${day}T10:00:00.000Z`,
-      voice: "Tünde",
+      voice: "Samantha",
       engine: "say",
       ...entry,
     }),
@@ -98,8 +98,8 @@ function harness(options: {
     paths: pathsFor(home),
     modelCall: model.call,
     conventionText: "speak on finish",
-    projectsRoot: "/Users/felho/dev",
-    projectDirs: ["craft"],
+    projectsRoot: "/Users/sam/dev",
+    projectDirs: ["website"],
     speak: async () => {},
     now: () => NOW,
     lockOptions: { pollMs: 5 },
@@ -311,7 +311,7 @@ describe("buildLedgerMatches", () => {
       ts: "2026-07-08T10:00:00.000Z",
       session_id,
       text,
-      voice: "Tünde",
+      voice: "Samantha",
       engine: "say",
     } as SpokenLogEntry,
     score,

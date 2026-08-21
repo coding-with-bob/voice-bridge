@@ -83,7 +83,7 @@ describe("createSession", () => {
   test("resolves the claude-native agent and an online host by itself", async () => {
     const { client, calls } = stubClient(routes);
     const created = await client.createSession({
-      workspace: "/Users/felho/dev/confpipeline",
+      workspace: "/Users/sam/dev/pipeline",
       permissionMode: "bypassPermissions",
       model: "claude-opus-5",
       effort: "high",
@@ -94,7 +94,7 @@ describe("createSession", () => {
     expect(post.body).toMatchObject({
       agent_id: "ag_claude",
       host_id: "host_live",
-      workspace: "/Users/felho/dev/confpipeline",
+      workspace: "/Users/sam/dev/pipeline",
     });
   });
 

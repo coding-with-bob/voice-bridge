@@ -9,7 +9,7 @@ const context = (overrides: Partial<RoutingContext> = {}): RoutingContext => ({
     {
       id: "s1",
       title: "subtitle pipeline",
-      workspace: "/Users/felho/dev/craft",
+      workspace: "/Users/sam/dev/craft",
       status: "idle",
       minutes_since_active: 4,
       spoken_tail: ["The subtitles are done."],
@@ -25,11 +25,11 @@ const context = (overrides: Partial<RoutingContext> = {}): RoutingContext => ({
   ledger_matches: [],
   peeks: [],
   recent_exchanges: [],
-  projects_root: "/Users/felho/dev",
-  project_dirs: ["craft", "confpipeline"],
+  projects_root: "/Users/sam/dev",
+  project_dirs: ["craft", "pipeline"],
   session_models: ["claude-opus-5", "claude-fable-5"],
   session_model: "claude-opus-5",
-  home_dir: "/Users/felho/bob",
+  home_dir: "/Users/sam/bob",
   followup_window_min: 30,
   candidate_window_days: 14,
   digest: "1 candidates",
@@ -167,7 +167,7 @@ describe("buildUserPrompt", () => {
     const prompt = buildUserPrompt(context(), "x", NOW);
     expect(prompt).toContain("id: s1");
     expect(prompt).toContain("idle 4m");
-    expect(prompt).toContain("/Users/felho/dev/craft");
+    expect(prompt).toContain("/Users/sam/dev/craft");
     expect(prompt).toContain("subtitle pipeline");
     expect(prompt).toContain('spoke: "The subtitles are done."');
   });
@@ -185,8 +185,8 @@ describe("buildUserPrompt", () => {
   test("lists the placement vocabulary so no path has to be guessed", () => {
     const prompt = buildUserPrompt(context(), "x", NOW);
     expect(prompt).toContain("- craft");
-    expect(prompt).toContain("- confpipeline");
-    expect(prompt).toContain("/Users/felho/bob");
+    expect(prompt).toContain("- pipeline");
+    expect(prompt).toContain("/Users/sam/bob");
   });
 
   // Regression: the first live run produced cwd "<home>/hey-bob" because the prompt listed
@@ -194,8 +194,8 @@ describe("buildUserPrompt", () => {
   // without their root are an invitation to guess.
   test("spells out the absolute form of a placement path, not just the names", () => {
     const prompt = buildUserPrompt(context(), "x", NOW);
-    expect(prompt).toContain("/Users/felho/dev/<name>");
-    expect(prompt).toContain("/Users/felho/dev/craft");
+    expect(prompt).toContain("/Users/sam/dev/<name>");
+    expect(prompt).toContain("/Users/sam/dev/craft");
   });
 
   test("says plainly when there is nothing to continue", () => {
@@ -298,7 +298,7 @@ describe("buildUserPrompt", () => {
           {
             id: "july",
             title: "subtitle work",
-            workspace: "/Users/felho/dev/craft",
+            workspace: "/Users/sam/dev/craft",
             status: "idle",
             minutes_since_active: 54_000,
             spoken_tail: [],

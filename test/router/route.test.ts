@@ -31,7 +31,7 @@ const NOW = new Date("2026-08-15T12:00:00.000Z");
 
 const session = (overrides: Partial<PoolSession> & { id: string }): PoolSession => ({
   title: "subtitle pipeline",
-  workspace: "/Users/felho/dev/craft",
+  workspace: "/Users/sam/dev/website",
   status: "idle",
   agent_name: "claude-native-ui",
   created_at: Math.floor(NOW.getTime() / 1000) - 3600,
@@ -72,7 +72,7 @@ function harness(overrides: Partial<RouteDeps> = {}) {
     ),
     conventionText: "speak on finish",
     projectsRoot: home, // `workspace` below is a direct child, i.e. an offered placement
-    projectDirs: ["craft"],
+    projectDirs: ["website"],
     speak: async (text: string) => void spoken.push(text),
     now: () => NOW,
     lockOptions: { pollMs: 5 },
@@ -90,7 +90,7 @@ describe("route — continue", () => {
     const result = await route("and the other one too", deps);
 
     expect(result.decision.action).toBe("continue");
-    expect(messages).toEqual([{ id: "s1", text: `${metadataBlock("s1")}\n\ndo it` }]);
+    expect(messages).toEqual([{ id: "s1", text: `${metadataBlock("s1", DEFAULT_CONFIG.owner_name)}\n\ndo it` }]);
     expect(spoken).toEqual(["Passing it on."]);
     expect(result.executed).toBe(true);
     expect(result.target_session_id).toBe("s1");
@@ -350,7 +350,7 @@ describe("route — the spoken ledger feeds the context", () => {
         ts: "2026-08-15T11:56:00.000Z",
         session_id: "s1",
         text: "The subtitles are done.",
-        voice: "Tünde",
+        voice: "Samantha",
         engine: "say",
       })}\n`,
       "utf8",
@@ -393,7 +393,7 @@ describe("route — under a barge-in", () => {
 
     expect(messages).toHaveLength(1);
     expect(messages[0]!.text).toBe(
-      `${metadataBlock("s1")}\n\n${interruptionNote("The half that was never heard.")}\n\ndo it`,
+      `${metadataBlock("s1", DEFAULT_CONFIG.owner_name)}\n\n${interruptionNote("The half that was never heard.")}\n\ndo it`,
     );
   });
 
@@ -411,7 +411,7 @@ describe("route — under a barge-in", () => {
     await route("something else entirely", deps);
 
     // The dispatch went to s1 while s2 was the cut session: no note anywhere.
-    expect(base.messages[0]!.text).toBe(`${metadataBlock("s1")}\n\ndo it`);
+    expect(base.messages[0]!.text).toBe(`${metadataBlock("s1", DEFAULT_CONFIG.owner_name)}\n\ndo it`);
     expect(messages).toEqual([]);
   });
 
@@ -436,14 +436,14 @@ describe("route — under a barge-in", () => {
 
     await route("and the other one too", deps);
 
-    expect(messages[0]!.text).toBe(`${metadataBlock("s1")}\n\ndo it`);
+    expect(messages[0]!.text).toBe(`${metadataBlock("s1", DEFAULT_CONFIG.owner_name)}\n\ndo it`);
     expect(readDecisionEntries(deps.paths.decisionLog, { limit: 1 })[0]!.interruption).toBeUndefined();
   });
 
   test("no barge-in at all leaves the routed message exactly as it was", async () => {
     const { deps, messages } = harness();
     await route("do it", deps);
-    expect(messages[0]!.text).toBe(`${metadataBlock("s1")}\n\ndo it`);
+    expect(messages[0]!.text).toBe(`${metadataBlock("s1", DEFAULT_CONFIG.owner_name)}\n\ndo it`);
   });
 });
 

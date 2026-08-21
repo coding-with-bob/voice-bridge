@@ -1,4 +1,7 @@
-import { describe, expect, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { extractJson, claudeCliArgs, claudeLauncher } from "../../src/router/model.ts";
 
 describe("extractJson", () => {
@@ -29,8 +32,8 @@ describe("extractJson", () => {
   });
 
   test("handles escaped quotes inside string values", () => {
-    const text = '{"action":"clarify","question":"did you mean \\"craft\\"?"}';
-    expect(extractJson(text)).toMatchObject({ question: 'did you mean "craft"?' });
+    const text = '{"action":"clarify","question":"did you mean \\"website\\"?"}';
+    expect(extractJson(text)).toMatchObject({ question: 'did you mean "website"?' });
   });
 
   test("handles nested objects", () => {
@@ -49,13 +52,24 @@ describe("extractJson", () => {
 });
 
 describe("claudeLauncher", () => {
+  let bin: string;
+
+  beforeEach(() => {
+    bin = mkdtempSync(join(tmpdir(), "bob-bin-"));
+    writeFileSync(join(bin, "llmp"), "#!/bin/sh\n", { mode: 0o755 });
+  });
+
+  afterEach(() => {
+    rmSync(bin, { recursive: true, force: true });
+  });
+
   /**
    * Regression: `bob route` from a bare environment (Raycast, launchd) failed on every
    * utterance because plain `claude` is only logged in where the llmp proxy environment was
    * inherited. `llmp claude` carries its own credentials.
    */
   test("prefers llmp claude when llmp is on PATH", () => {
-    expect(claudeLauncher({ PATH: "/Users/felho/.local/bin:/usr/bin" })).toEqual(["llmp", "claude"]);
+    expect(claudeLauncher({ PATH: `${bin}:/usr/bin` })).toEqual(["llmp", "claude"]);
   });
 
   test("falls back to plain claude where there is no llmp", () => {

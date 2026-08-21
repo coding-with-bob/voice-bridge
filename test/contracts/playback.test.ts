@@ -88,10 +88,10 @@ describe("C7 pause marker", () => {
 
 describe("C7 paths", () => {
   test("the lock dir, the pause marker, and the interruption log all hang off the state home", () => {
-    expect(playbackLockDir("/Users/felho/bob")).toBe("/Users/felho/bob/state/playback");
-    expect(pauseMarkerPath("/Users/felho/bob")).toBe("/Users/felho/bob/state/playback/pause.json");
-    expect(interruptionsLogPath("/Users/felho/bob")).toBe(
-      "/Users/felho/bob/logs/interruptions.jsonl",
+    expect(playbackLockDir("/Users/sam/bob")).toBe("/Users/sam/bob/state/playback");
+    expect(pauseMarkerPath("/Users/sam/bob")).toBe("/Users/sam/bob/state/playback/pause.json");
+    expect(interruptionsLogPath("/Users/sam/bob")).toBe(
+      "/Users/sam/bob/logs/interruptions.jsonl",
     );
   });
 });

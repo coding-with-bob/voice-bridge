@@ -54,7 +54,7 @@ function writeGc(entries: Array<Record<string, unknown>>) {
 describe("collectLogEvents", () => {
   test("merges the three logs into one chronological timeline", () => {
     writeSpoken("2026-08-15", [
-      { ts: "2026-08-15T10:00:05.000Z", session_id: "s1", text: "Done.", voice: "Tünde", engine: "say" },
+      { ts: "2026-08-15T10:00:05.000Z", session_id: "s1", text: "Done.", voice: "Samantha", engine: "say" },
     ]);
     writeDecisions([decision({ ts: "2026-08-15T10:00:00.000Z" })]);
     writeGc([
@@ -90,7 +90,7 @@ describe("collectLogEvents", () => {
 
   test("sources can be narrowed to one log", () => {
     writeSpoken("2026-08-15", [
-      { ts: "2026-08-15T10:00:05.000Z", session_id: "s1", text: "Done.", voice: "Tünde", engine: "say" },
+      { ts: "2026-08-15T10:00:05.000Z", session_id: "s1", text: "Done.", voice: "Samantha", engine: "say" },
     ]);
     writeDecisions([decision()]);
     const events = collectLogEvents({ homeDir: home, paths: paths(), sources: ["spoken"] });
@@ -99,7 +99,7 @@ describe("collectLogEvents", () => {
 
   test("--reachbacks keeps only the decisions that reached back", () => {
     writeSpoken("2026-08-15", [
-      { ts: "2026-08-15T10:00:05.000Z", session_id: "s1", text: "Done.", voice: "Tünde", engine: "say" },
+      { ts: "2026-08-15T10:00:05.000Z", session_id: "s1", text: "Done.", voice: "Samantha", engine: "say" },
     ]);
     writeDecisions([
       decision({ ts: "2026-08-15T09:00:00.000Z" }),
@@ -159,11 +159,11 @@ describe("renderLogEvent", () => {
       kind: "decision",
       ts: decision().ts,
       entry: decision({
-        decision: { action: "new", cwd: "/Users/felho/dev/craft", request: "r", ack: "a" },
+        decision: { action: "new", cwd: "/Users/sam/dev/website", request: "r", ack: "a" },
         target_session_id: "conv_fresh",
       }),
     });
-    expect(line).toContain("/Users/felho/dev/craft (conv_fresh)");
+    expect(line).toContain("/Users/sam/dev/website (conv_fresh)");
   });
 
   test("the flags that matter are shown, with their reasons", () => {

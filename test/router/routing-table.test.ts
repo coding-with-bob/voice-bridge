@@ -7,11 +7,13 @@
  * fails only if it fails **twice consecutively**, because one unlucky sample from a
  * non-deterministic model is not a regression.
  */
-import { describe, expect, test } from "bun:test";
+import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import {
+  cleanupProjectDirs,
   ROUTING_TABLE,
   runCase,
   resolveExpectedCwd,
+  setupProjectDirs,
   type RoutingCase,
   type RunOutcome,
 } from "./routing-table.ts";
@@ -20,6 +22,16 @@ import { DEFAULT_CONFIG } from "../../src/contracts/config.ts";
 
 const LIVE = process.env.BOB_ROUTING_LIVE === "1";
 const LIVE_TIMEOUT_MS = 180_000;
+
+// The placement rows name directories that must really exist — the executability gate refuses
+// a cwd that does not. They are the suite's own, so the table routes the same on any machine.
+beforeAll(() => {
+  setupProjectDirs();
+});
+
+afterAll(() => {
+  cleanupProjectDirs();
+});
 
 if (LIVE) {
   console.warn(

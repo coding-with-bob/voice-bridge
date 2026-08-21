@@ -92,7 +92,8 @@ const baseOptions = (
   text: "The build **passed**.",
   sessionId: "sess-1",
   homeDir: home,
-  defaultVoice: "say:Tünde",
+  ownerName: "Ada",
+  defaultVoice: "say:Samantha",
   lockOptions: { pollMs: 5 },
   ...overrides,
 });
@@ -109,7 +110,7 @@ describe("speak — the happy path", () => {
     const result = await speak(baseOptions({ engines: { say, elevenlabs: fakeEngine("elevenlabs") } }));
 
     expect(result.engine).toBe("say");
-    expect(result.voice).toBe("Tünde");
+    expect(result.voice).toBe("Samantha");
     expect(result.spoken_text).toBe("The build passed.");
     expect(say.spoken).toHaveLength(1);
     // The engine gets prosody markup; the ledger and --json get the plain sentence.
@@ -125,7 +126,7 @@ describe("speak — the happy path", () => {
     expect(entries[0]).toMatchObject({
       session_id: "sess-1",
       text: "The build passed.",
-      voice: "Tünde",
+      voice: "Samantha",
       engine: "say",
     });
   });

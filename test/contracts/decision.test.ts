@@ -21,9 +21,9 @@ describe("C5 router decision — discriminated union", () => {
   test("accepts a complete new decision", () => {
     const parsed = RouterDecisionSchema.parse({
       action: "new",
-      cwd: "/Users/felho/dev/confpipeline",
+      cwd: "/Users/sam/dev/pipeline",
       request: "summarise the readme",
-      ack: "Starting a fresh session in confpipeline.",
+      ack: "Starting a fresh session in pipeline.",
     });
     expect(parsed.action).toBe("new");
   });
@@ -37,9 +37,9 @@ describe("C5 router decision — discriminated union", () => {
   test("a new decision may name the model and effort it is born with", () => {
     const parsed = RouterDecisionSchema.parse({
       action: "new",
-      cwd: "/Users/felho/dev/queries",
+      cwd: "/Users/sam/dev/notes",
       request: "summarise the PDF",
-      ack: "Új session Fable-lel: queries.",
+      ack: "Új session Fable-lel: notes.",
       model: "claude-fable-5",
       effort: "medium",
     });
