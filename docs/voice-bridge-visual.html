@@ -1,0 +1,741 @@
+<title>Hey Bob</title>
+<!--
+  Visual companion to voice-bridge-one-pager.md and D10.
+  The one-pager is the authority on every fact here; this page only renders it
+  (architecture diagram, scenario walkthroughs, router detail) for fast orientation.
+
+  Updated 2026-08-15 after the build (M0-M6). Where implementation contradicted the
+  design, the design was corrected rather than the page prettified — section 7 lists
+  exactly what changed and why.
+
+  Updated 2026-08-19 for D10 iteration 4, the barge-in (voice-barge-in-plan.md is its
+  authority): the architecture picture gained the hush path, section 3 a fourth run, and
+  section 8 the five defects the build produced — kept for the same reason section 7 is
+  kept, because what caught each one is the transferable part.
+-->
+<style>
+  :root {
+    --bg: #F3F5F4;
+    --surface: #FFFFFF;
+    --ink: #1B2320;
+    --muted: #5C6B66;
+    --line: #D8DFDC;
+    --teal: #0E7A6C;
+    --amber: #B36A14;
+    --teal-soft: #E3F0ED;
+    --amber-soft: #F6EBDC;
+    --code-bg: #ECEFEE;
+    --chip-bg: #E8ECEA;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #121917;
+      --surface: #1A211F;
+      --ink: #E6ECE9;
+      --muted: #93A39D;
+      --line: #2C3633;
+      --teal: #45BFA9;
+      --amber: #E0A159;
+      --teal-soft: #1D2E2A;
+      --amber-soft: #322818;
+      --code-bg: #222B28;
+      --chip-bg: #242D2A;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #121917;
+    --surface: #1A211F;
+    --ink: #E6ECE9;
+    --muted: #93A39D;
+    --line: #2C3633;
+    --teal: #45BFA9;
+    --amber: #E0A159;
+    --teal-soft: #1D2E2A;
+    --amber-soft: #322818;
+    --code-bg: #222B28;
+    --chip-bg: #242D2A;
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    background: var(--bg);
+    color: var(--ink);
+    font-family: "Seravek", "Avenir Next", system-ui, sans-serif;
+    font-size: 16px;
+    line-height: 1.55;
+    margin: 0;
+  }
+  .wrap { max-width: 900px; margin: 0 auto; padding: 48px 24px 80px; }
+
+  h1, h2, h3 { font-family: "Avenir Next", "Seravek", system-ui, sans-serif; text-wrap: balance; }
+  h1 { font-size: 40px; font-weight: 700; letter-spacing: -0.01em; margin: 8px 0 4px; }
+  h2 { font-size: 24px; font-weight: 600; margin: 0 0 4px; }
+  h3 { font-size: 17px; font-weight: 600; margin: 24px 0 8px; }
+  p { margin: 0 0 14px; max-width: 68ch; }
+  .muted { color: var(--muted); }
+
+  code, pre, .mono { font-family: "SF Mono", ui-monospace, "Menlo", monospace; }
+  code { font-size: 0.88em; background: var(--code-bg); padding: 1px 5px; border-radius: 4px; }
+  pre {
+    background: var(--code-bg);
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    padding: 14px 16px;
+    font-size: 13px;
+    line-height: 1.5;
+    overflow-x: auto;
+    margin: 0 0 16px;
+  }
+  pre code { background: none; padding: 0; }
+  .cm { color: var(--muted); }
+
+  .eyebrow {
+    font-family: "SF Mono", ui-monospace, "Menlo", monospace;
+    font-size: 11px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--teal);
+    margin: 0 0 2px;
+  }
+  section { margin-top: 56px; }
+  header.top { border-bottom: 1px solid var(--line); padding-bottom: 24px; }
+
+  .fact-row { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 16px; }
+  .fact {
+    font-family: "SF Mono", ui-monospace, "Menlo", monospace;
+    font-size: 12px;
+    background: var(--chip-bg);
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    padding: 4px 12px;
+    white-space: nowrap;
+  }
+  .fact b { color: var(--teal); font-weight: 600; }
+
+  .decisions { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 12px; margin-top: 16px; }
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    padding: 14px 16px;
+  }
+  .card h3 { font-size: 15px; margin: 0 0 4px; }
+  .card p { font-size: 14px; color: var(--muted); margin: 0; max-width: none; }
+  .card .tag {
+    font-family: "SF Mono", ui-monospace, "Menlo", monospace;
+    font-size: 10px; letter-spacing: 0.08em; text-transform: uppercase;
+    color: var(--amber);
+  }
+
+  figure { margin: 20px 0 0; }
+  .breakout { width: min(1280px, calc(100vw - 48px)); position: relative; left: 50%; transform: translateX(-50%); }
+  .diagram-scroll { overflow-x: auto; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); }
+  .diagram-scroll svg { display: block; min-width: 1180px; width: 100%; height: auto; }
+  figcaption { font-size: 13px; color: var(--muted); margin-top: 10px; max-width: 78ch; margin-left: auto; margin-right: auto; }
+
+  svg text { font-family: "Seravek", system-ui, sans-serif; fill: var(--ink); }
+  svg .t-mono { font-family: "SF Mono", ui-monospace, "Menlo", monospace; }
+  svg .t-sub { fill: var(--muted); }
+  svg .t-zone { font-family: "SF Mono", ui-monospace, "Menlo", monospace; fill: var(--muted); letter-spacing: 0.08em; }
+  svg .box { fill: var(--surface); stroke: var(--line); }
+  svg .box-hi { fill: var(--teal-soft); stroke: var(--teal); }
+  svg .box-voice { fill: var(--amber-soft); stroke: var(--amber); }
+  svg .box-sleep { fill: none; stroke: var(--line); stroke-dasharray: 5 4; }
+  svg .chipbox { fill: var(--chip-bg); stroke: var(--line); }
+  svg .zone { fill: none; stroke: var(--line); stroke-dasharray: 4 4; }
+  svg .fl-t { stroke: var(--teal); fill: none; stroke-width: 1.6; }
+  svg .fl-a { stroke: var(--amber); fill: none; stroke-width: 1.6; }
+  svg .fl-n { stroke: var(--muted); fill: none; stroke-width: 1.2; }
+  svg .fl-dash { stroke-dasharray: 5 4; }
+  svg .lbl { font-size: 11px; }
+  svg .lbl-t { fill: var(--teal); }
+  svg .lbl-a { fill: var(--amber); }
+  svg .person { stroke: var(--ink); fill: none; stroke-width: 1.6; }
+
+  .scen { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 20px 22px; margin-top: 20px; }
+  .scen .quote {
+    font-size: 18px; font-weight: 600; font-family: "Avenir Next", system-ui, sans-serif;
+    margin: 2px 0 4px;
+  }
+  .scen .setup { font-size: 14px; color: var(--muted); margin-bottom: 14px; }
+  .steps { display: grid; grid-template-columns: auto 1fr auto; gap: 8px 14px; align-items: baseline; margin: 0; padding: 0; }
+  .step-actor {
+    font-family: "SF Mono", ui-monospace, "Menlo", monospace;
+    font-size: 11px; letter-spacing: 0.06em;
+    border-radius: 5px; padding: 2px 8px;
+    white-space: nowrap;
+    background: var(--chip-bg); border: 1px solid var(--line);
+    justify-self: start;
+  }
+  .step-actor.a-voice { background: var(--amber-soft); border-color: var(--amber); color: var(--amber); }
+  .step-actor.a-ctrl { background: var(--teal-soft); border-color: var(--teal); color: var(--teal); }
+  .step-text { font-size: 14.5px; }
+  .step-time {
+    font-family: "SF Mono", ui-monospace, "Menlo", monospace;
+    font-size: 11.5px; color: var(--muted); white-space: nowrap;
+    font-variant-numeric: tabular-nums;
+  }
+  .scen .note { font-size: 13px; color: var(--muted); border-top: 1px dashed var(--line); margin-top: 14px; padding-top: 10px; }
+
+  .pipeline { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin: 14px 0 18px; }
+  .pipeline .stage {
+    background: var(--surface); border: 1px solid var(--line); border-radius: 8px;
+    padding: 8px 12px; font-size: 13px;
+  }
+  .pipeline .stage b { display: block; font-size: 12px; font-family: "SF Mono", ui-monospace, "Menlo", monospace; color: var(--teal); }
+  .pipeline .arr { color: var(--muted); }
+
+  table { border-collapse: collapse; width: 100%; font-size: 14px; margin: 10px 0 18px; }
+  th, td { text-align: left; padding: 8px 12px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { font-size: 12px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); font-weight: 600; }
+  td:first-child { white-space: nowrap; }
+  .tbl-scroll { overflow-x: auto; }
+
+  .open-list { padding-left: 20px; margin: 8px 0 0; }
+  .open-list li { margin-bottom: 8px; max-width: 70ch; }
+  footer { margin-top: 64px; border-top: 1px solid var(--line); padding-top: 16px; font-size: 13px; color: var(--muted); }
+</style>
+
+<div class="wrap">
+<header class="top">
+  <p class="eyebrow">Hey Bob · voice-bridge · built 2026-08-15 · barge-in 2026-08-19 · the picture page — the README carries the words</p>
+  <h1>Hey Bob</h1>
+  <p class="muted">Voice entry into your own LLM tools: shortcut → speech → the right session gets the message or gets born → the result comes back as voice — and the same shortcut stops it talking when you have heard enough. This page renders the model as built: architecture, four example runs, the router's working, the session lifecycle, and what each build round got wrong first. Numbers marked <em>measured</em> come from the acceptance runs; the rest are from the 2026-08-14 spike.</p>
+  <div class="fact-row">
+    <span class="fact">M0–M6 built <b>2026-08-15</b></span>
+    <span class="fact">barge-in M0–M4 <b>2026-08-19</b></span>
+    <span class="fact">S/A · S/B · S/C · S/D live <b>✓</b></span>
+    <span class="fact">suite <b>green</b></span>
+    <span class="fact">spoken ack <b>7.4 s measured</b></span>
+    <span class="fact">of which routing <b>~4 s</b></span>
+    <span class="fact">fresh session first reply <b>~3 s</b></span>
+    <span class="fact">gc-stopped → revived <b>4.1 s measured</b></span>
+    <span class="fact">stop → a message revives <b>✓ (non-sticky)</b></span>
+    <span class="fact">cut → quiet → ack → queue <b>heard ✓</b></span>
+  </div>
+</header>
+
+<section>
+  <p class="eyebrow">1 · decisions</p>
+  <h2>The settled model</h2>
+  <p>Omnigent is the execution platform; the own component is one small router CLI — with no target registry and no session typology: the router only addresses, interpretation belongs to the existing skill layer.</p>
+  <div class="decisions">
+    <div class="card">
+      <span class="tag">adopted</span>
+      <h3>Omnigent = execution platform</h3>
+      <p>Session pool over real Claude Code / Codex CLIs. API: spawn, message, SSE, list, approval resolve. Stop is non-sticky: a stopped session "sleeps"; one message revives it — resume is the base primitive, not a feature.</p>
+    </div>
+    <div class="card">
+      <span class="tag">own · the build</span>
+      <h3><code>bob route</code> — two questions, nothing more</h3>
+      <p>Per utterance: <strong>(1) affinity</strong> — does a pooled session hold the context this needs? → continue there. <strong>(2) placement</strong> — else, where should the new session be born (project repo or home)? No targets.yaml, no session types. Default yolo; external side effects stay gated in skills/CLIs (R-7).</p>
+    </div>
+    <div class="card">
+      <span class="tag">existing layer</span>
+      <h3>Intent resolution = the skill layer's job</h3>
+      <p>What "fetch this week's episodes" means is understood by the session — via the global skill fleet's USE WHEN routing (S-11), later enriched by the Wienerdog digest. The router never reinvents it: it doesn't understand the domain, it addresses.</p>
+    </div>
+    <div class="card">
+      <span class="tag">own · tiny</span>
+      <h3><code>bobsay</code> + the spoken log</h3>
+      <p>The session speaks its result (prosody → ElevenLabs, per-call voice, playback lock). Playback runs <strong>sentence by sentence with prefetch</strong>, so first audio comes sooner and an interruption is sentence-precise. As a byproduct it writes an append-only log (grouped daily) — at once the recency source (who spoke last, derived at read time), routing metadata, and searchable chronicle.</p>
+    </div>
+    <div class="card">
+      <span class="tag">own · tiny</span>
+      <h3>Input = push-to-talk</h3>
+      <p>No always-on ear (ABS-3 intact): hold Globe+Ctrl+Alt → record → Scribe STT → <code>bob dictate</code>; releasing any key of the chord sends. No wake word, and pauses cost nothing — recording follows the chord, not the sound. <strong>The same chord is the interrupt</strong> — there is no second shortcut to learn.</p>
+    </div>
+    <div class="card">
+      <span class="tag">own · iteration 4</span>
+      <h3>Barge-in = stop talking and listen</h3>
+      <p>Pressing while Bob talks kills that answer (and the queued chunks of the same answer), writes the unheard half down, and keeps everything else silent until the ack. The next utterance is presumed to belong to the session that was cut, which is told where the cut fell. <strong>Hush touches audio, never a session</strong> — killing playback is honest because the ledger is written after playback, so the unplayed part was never a fact.</p>
+    </div>
+    <div class="card">
+      <span class="tag">governance</span>
+      <h3>One deliberate exception</h3>
+      <p>The Omnigent server is a daemon — exempted from the no-daemon rule as user-launched, localhost-only (R-15). As an adopted component it gets an integration contract, like Wienerdog.</p>
+    </div>
+  </div>
+</section>
+
+<section>
+  <p class="eyebrow">2 · architecture</p>
+  <h2>The system in one picture</h2>
+  <figure class="breakout">
+    <div class="diagram-scroll">
+    <svg viewBox="0 0 1180 620" role="img" aria-label="The voice-bridge architecture: push-to-talk input, the bob route router CLI, the Omnigent execution platform and the untyped session pool; voice returns through bobsay, which also writes the log. The same push-to-talk press first fires bob hush, which stops whatever is playing and pauses the queue until the router has acknowledged the new utterance.">
+      <defs>
+        <marker id="arrN" markerWidth="9" markerHeight="8" refX="8" refY="4" orient="auto">
+          <polygon points="0,0.5 8,4 0,7.5" style="fill: var(--muted)"></polygon>
+        </marker>
+        <marker id="arrT" markerWidth="9" markerHeight="8" refX="8" refY="4" orient="auto">
+          <polygon points="0,0.5 8,4 0,7.5" style="fill: var(--teal)"></polygon>
+        </marker>
+        <marker id="arrA" markerWidth="9" markerHeight="8" refX="8" refY="4" orient="auto">
+          <polygon points="0,0.5 8,4 0,7.5" style="fill: var(--amber)"></polygon>
+        </marker>
+      </defs>
+
+      <!-- zones -->
+      <rect class="zone" x="150" y="36" width="210" height="550" rx="10"></rect>
+      <text class="t-zone" x="162" y="58" font-size="10">CHANNEL · THIN</text>
+      <rect class="zone" x="380" y="36" width="230" height="550" rx="10"></rect>
+      <text class="t-zone" x="392" y="58" font-size="10">ORCHESTRATOR · OWN</text>
+      <rect class="zone" x="630" y="36" width="210" height="550" rx="10"></rect>
+      <text class="t-zone" x="642" y="58" font-size="10">OMNIGENT · ADOPTED</text>
+      <rect class="zone" x="860" y="36" width="300" height="550" rx="10"></rect>
+      <text class="t-zone" x="872" y="58" font-size="10">SESSION POOL · UNTYPED</text>
+
+      <!-- person -->
+      <circle class="person" cx="72" cy="120" r="13"></circle>
+      <path class="person" d="M 50 165 C 50 142 94 142 94 165"></path>
+      <text x="72" y="190" text-anchor="middle" font-size="13" font-weight="600">You</text>
+
+      <!-- PTT -->
+      <rect class="box-voice" x="172" y="96" width="166" height="90" rx="8"></rect>
+      <text x="255" y="122" text-anchor="middle" font-size="13" font-weight="600">PTT capture</text>
+      <text class="t-sub" x="255" y="140" text-anchor="middle" font-size="11">hold chord · record · release</text>
+      <text class="t-sub" x="255" y="155" text-anchor="middle" font-size="11">Hammerspoon · Scribe STT</text>
+      <text class="t-sub" x="255" y="173" text-anchor="middle" font-size="11" font-weight="600">the same press = the interrupt</text>
+
+      <!-- bob route -->
+      <rect class="box-hi" x="400" y="92" width="190" height="80" rx="8"></rect>
+      <text class="t-mono" x="495" y="116" text-anchor="middle" font-size="14" font-weight="600">bob route</text>
+      <text class="t-sub" x="495" y="134" text-anchor="middle" font-size="11">1. affinity? → continue</text>
+      <text class="t-sub" x="495" y="149" text-anchor="middle" font-size="11">2. placement? → new</text>
+      <text class="t-sub" x="495" y="164" text-anchor="middle" font-size="11">CLI · no daemon · up to 3 model rounds</text>
+
+      <!-- files -->
+      <rect class="chipbox" x="400" y="210" width="190" height="26" rx="6"></rect>
+      <text class="t-mono" x="495" y="227" text-anchor="middle" font-size="11">defaults.yaml</text>
+      <rect class="chipbox" x="400" y="244" width="190" height="26" rx="6"></rect>
+      <text class="t-mono" x="495" y="261" text-anchor="middle" font-size="11">spoken/2026-08-15.jsonl</text>
+      <rect class="chipbox" x="400" y="278" width="190" height="26" rx="6"></rect>
+      <text class="t-mono" x="495" y="295" text-anchor="middle" font-size="11">logs/route-decisions.jsonl</text>
+      <rect class="chipbox" x="400" y="312" width="190" height="26" rx="6"></rect>
+      <text class="t-mono" x="495" y="329" text-anchor="middle" font-size="11">CLAUDE.md — C6 convention</text>
+      <line class="fl-n fl-dash" x1="495" y1="210" x2="495" y2="176" marker-end="url(#arrN)"></line>
+      <text class="lbl t-sub" x="503" y="197">reads</text>
+      <path class="fl-n fl-dash" d="M 590 168 L 604 168 L 604 291 L 594 291" marker-end="url(#arrN)"></path>
+      <text class="lbl t-sub" x="495" y="356" text-anchor="middle">reads all four · writes the decisions</text>
+      <text class="lbl t-sub" x="495" y="370" text-anchor="middle">C6 text ships with every new session</text>
+
+      <!-- Omnigent server -->
+      <rect class="box" x="648" y="86" width="176" height="102" rx="8"></rect>
+      <text x="736" y="110" text-anchor="middle" font-size="13" font-weight="600">Omnigent server</text>
+      <text class="t-mono t-sub" x="736" y="127" text-anchor="middle" font-size="10">localhost:6767</text>
+      <text class="t-mono t-sub" x="736" y="146" text-anchor="middle" font-size="10">POST /sessions · /events</text>
+      <text class="t-mono t-sub" x="736" y="161" text-anchor="middle" font-size="10">SSE · GET /sessions</text>
+      <text class="t-mono t-sub" x="736" y="176" text-anchor="middle" font-size="10">elicitations/resolve</text>
+
+      <!-- host daemon -->
+      <rect class="box" x="648" y="252" width="176" height="52" rx="8"></rect>
+      <text x="736" y="274" text-anchor="middle" font-size="12" font-weight="600">host daemon</text>
+      <text class="t-sub" x="736" y="290" text-anchor="middle" font-size="10.5">terminal launch on your Mac</text>
+      <line class="fl-n" x1="736" y1="188" x2="736" y2="252" marker-end="url(#arrN)"></line>
+
+      <!-- UI -->
+      <rect class="box" x="648" y="344" width="176" height="80" rx="8"></rect>
+      <text x="736" y="366" text-anchor="middle" font-size="12" font-weight="600">Web / Desktop UI</text>
+      <text class="t-sub" x="736" y="383" text-anchor="middle" font-size="10.5">session list · attach</text>
+      <text class="t-sub" x="736" y="398" text-anchor="middle" font-size="10.5">Inbox: approval cards</text>
+      <line class="fl-n" x1="736" y1="344" x2="736" y2="304"></line>
+
+      <!-- sessions -->
+      <rect class="box" x="900" y="80" width="220" height="78" rx="8"></rect>
+      <text class="t-mono" x="1010" y="104" text-anchor="middle" font-size="12" font-weight="600">~/dev/mac-configuration</text>
+      <text class="t-sub" x="1010" y="122" text-anchor="middle" font-size="10.5">running · project context</text>
+      <text class="t-sub" x="1010" y="137" text-anchor="middle" font-size="10.5">Claude Code · tmux</text>
+
+      <rect class="box" x="900" y="180" width="220" height="78" rx="8"></rect>
+      <text class="t-mono" x="1010" y="204" text-anchor="middle" font-size="12" font-weight="600">~/bob — home</text>
+      <text class="t-sub" x="1010" y="222" text-anchor="middle" font-size="10.5">running · global skill fleet</text>
+      <text class="t-sub" x="1010" y="237" text-anchor="middle" font-size="10.5">intent resolved via USE WHEN</text>
+
+      <rect class="box-sleep" x="900" y="280" width="220" height="78" rx="8"></rect>
+      <text class="t-mono t-sub" x="1010" y="304" text-anchor="middle" font-size="12" font-weight="600">~/dev/podcast-ingest</text>
+      <text class="t-sub" x="1010" y="322" text-anchor="middle" font-size="10.5">asleep — no process,</text>
+      <text class="t-sub" x="1010" y="337" text-anchor="middle" font-size="10.5">a message revives it (~3 s)</text>
+
+      <line class="fl-n" x1="824" y1="278" x2="900" y2="119" marker-end="url(#arrN)"></line>
+      <line class="fl-n" x1="824" y1="278" x2="900" y2="219" marker-end="url(#arrN)"></line>
+      <line class="fl-n" x1="824" y1="278" x2="900" y2="319" marker-end="url(#arrN)"></line>
+      <text class="lbl t-sub" x="836" y="246">launch on demand</text>
+      <text class="lbl t-sub" x="836" y="232">measured: ~3 s</text>
+
+      <!-- bobsay -->
+      <rect class="box-voice" x="172" y="430" width="166" height="90" rx="8"></rect>
+      <text class="t-mono" x="255" y="456" text-anchor="middle" font-size="14" font-weight="600">bobsay</text>
+      <text class="t-sub" x="255" y="474" text-anchor="middle" font-size="11">sentence by sentence · prefetch</text>
+      <text class="t-sub" x="255" y="489" text-anchor="middle" font-size="11">per-call voice · playback lock</text>
+      <text class="t-sub" x="255" y="504" text-anchor="middle" font-size="11">fallback: say</text>
+
+      <!-- The press is also the interrupt (iteration 4); the sequence has its own figure below. -->
+      <path class="fl-a fl-dash" d="M 255 186 L 255 424" marker-end="url(#arrA)"></path>
+      <text class="lbl lbl-a" x="263" y="330">the press first fires</text>
+      <text class="lbl lbl-a" x="263" y="344" font-weight="600">bob hush</text>
+      <text class="lbl lbl-a" x="263" y="358">— this stops mid-answer</text>
+
+      <!-- flows: voice in -->
+      <line class="fl-a" x1="98" y1="132" x2="172" y2="132" marker-end="url(#arrA)"></line>
+      <text class="lbl lbl-a" x="106" y="124">voice</text>
+
+      <line class="fl-t" x1="338" y1="132" x2="400" y2="132" marker-end="url(#arrT)"></line>
+      <text class="lbl lbl-t" x="342" y="124">text</text>
+
+      <path class="fl-t" d="M 590 132 L 648 132" marker-end="url(#arrT)"></path>
+      <text class="lbl lbl-t" x="642" y="106" text-anchor="end">REST: continue / new</text>
+      <text class="lbl lbl-t" x="642" y="120" text-anchor="end">warm loop: 2–3 s</text>
+
+      <!-- session -> bobsay voice back -->
+      <path class="fl-a" d="M 1010 358 L 1010 552 L 255 552 L 255 520" marker-end="url(#arrA)"></path>
+      <text class="lbl lbl-a" x="632" y="545" text-anchor="middle">Bash: bobsay "🗣 one-sentence summary" — the session speaks it, from full context</text>
+
+      <!-- bobsay -> You -->
+      <path class="fl-a" d="M 172 475 L 72 475 L 72 205" marker-end="url(#arrA)"></path>
+      <text class="lbl lbl-a" x="82" y="452">voice</text>
+
+      <!-- bobsay -> spoken log -->
+      <path class="fl-n fl-dash" d="M 338 458 L 390 458 L 390 257 L 396 257" marker-end="url(#arrN)"></path>
+      <text class="lbl t-sub" x="346" y="450">logs, after playback: who · what was heard</text>
+
+      <!-- UI -> You dashed -->
+      <path class="fl-n fl-dash" d="M 648 396 L 60 396 L 60 205" marker-end="url(#arrN)"></path>
+      <text class="lbl t-sub" x="354" y="389" text-anchor="middle">approval card when a manual-permission session asks</text>
+
+      <!-- legend -->
+      <line class="fl-a" x1="172" y1="600" x2="202" y2="600"></line>
+      <text class="lbl" x="208" y="604">voice path</text>
+      <line class="fl-t" x1="268" y1="600" x2="298" y2="600"></line>
+      <text class="lbl" x="304" y="604">control / text</text>
+      <line class="fl-n fl-dash" x1="402" y1="600" x2="432" y2="600"></line>
+      <text class="lbl" x="438" y="604">state / exceptional path</text>
+    </svg>
+    </div>
+    <figcaption>The request flows left to right (voice → text → two routing questions → Omnigent API → session); the answer returns through <code>bobsay</code> — which also writes a log line that feeds the next routing decision. <strong>The press is also the interrupt</strong> (iteration 4): before the recorder starts, <code>bob hush</code> kills whatever is playing, appends what went unheard to <code>logs/interruptions.jsonl</code>, and drops a pause marker into <code>state/playback/</code> so nothing else speaks until the acknowledgement — the router's ack is the one voice exempt from it, because it is the event the pause is waiting for. <strong>Two logs, no pointer file:</strong> the spoken ledger records who spoke, the decision log records who was dispatched to, and "most recent interaction" is derived from both at read time. The pool has no session types: only birth context (cwd) and accumulated conversation; a sleeping session is as addressable as a running one. The only standing processes are the Omnigent server and the host daemon (R-15).</figcaption>
+  </figure>
+</section>
+
+<section>
+  <p class="eyebrow">3 · scenarios</p>
+  <h2>Four runs on this architecture</h2>
+
+  <div class="scen">
+    <p class="eyebrow" style="color: var(--amber)">S/A · new work · placement decision</p>
+    <p class="quote">"Hey Bob, check whether yesterday's episode came in."</p>
+    <p class="setup">No session holds relevant context — the router starts a new one and only decides <em>where</em> it should be born.</p>
+    <div class="steps">
+      <span class="step-actor a-voice">YOU</span><span class="step-text">Press the shortcut, speak, release.</span><span class="step-time">0 s</span>
+      <span class="step-actor a-voice">PTT</span><span class="step-text">Record → STT → text to <code>bob route</code>.</span><span class="step-time">~1–2 s</span>
+      <span class="step-actor a-ctrl">ROUTER</span><span class="step-text">Affinity: none (no recent interaction, no match). Placement: the request points at the podcast ingester → <code>{action: new, cwd: ~/dev/podcast-ingest}</code>. Validates that the directory exists, dispatches, then speaks the ack: "Looking into it."</span><span class="step-time">~4 s decide<br>+2 s to speak it</span>
+      <span class="step-actor a-ctrl">ROUTER</span><span class="step-text"><code>POST /v1/sessions</code> (yolo) + the request via <code>POST /events</code>. The CLI exits here.</span><span class="step-time">&lt;1 s</span>
+      <span class="step-actor">OMNIGENT</span><span class="step-text">The host daemon launches the real Claude Code CLI in tmux in the podcast-ingest directory — it boots with the project's context.</span><span class="step-time">~3 s (measured)</span>
+      <span class="step-actor">SESSION</span><span class="step-text">The session resolves the intent (project CLAUDE.md / skills) and drives your own ingest CLI — yolo, no approval stalls.</span><span class="step-time">task-dependent</span>
+      <span class="step-actor a-voice">BOBSAY</span><span class="step-text">"The episode is in, but the show notes aren't up yet." — plus a line into the spoken log.</span><span class="step-time">+2 s</span>
+    </div>
+    <p class="note">If the request pointed nowhere, the session would be born in home (<code>~/bob</code>) and the global skill fleet's USE WHEN routing would resolve it — the router never understands the domain, it addresses. Measurement correction from the spike: fresh sessions aren't "cold" — the 117 s once mistaken for cold start was approval wait.</p>
+  </div>
+
+  <div class="scen">
+    <p class="eyebrow" style="color: var(--teal)">S/B · affinity · to the last speaker</p>
+    <p class="quote">"Then put the show notes on the processing list too."</p>
+    <p class="setup">The podcast-ingest session spoke three minutes ago. The request is uninterpretable on its own ("the show notes"? "too"?) — the context lives in the session, not in the router.</p>
+    <div class="steps">
+      <span class="step-actor a-voice">PTT</span><span class="step-text">Voice → text, as always.</span><span class="step-time">~1–2 s</span>
+      <span class="step-actor a-ctrl">ROUTER</span><span class="step-text">Follow-up phrasing + the most recent interaction inside the window → <code>{action: continue, session: podcast-ingest}</code>.</span><span class="step-time">~4 s</span>
+      <span class="step-actor a-ctrl">ROUTER</span><span class="step-text"><code>POST /v1/sessions/{id}/events</code> — the message lands in the session's context.</span><span class="step-time">&lt;1 s</span>
+      <span class="step-actor">SESSION</span><span class="step-text">It knows exactly which episode — sets up the show-notes watch.</span><span class="step-time">warm loop: 2–3 s + work</span>
+      <span class="step-actor a-voice">BOBSAY</span><span class="step-text">"Done — the show-notes watcher checks hourly."</span><span class="step-time">+2 s</span>
+    </div>
+    <p class="note">The "and tell me when it's up" half is proactive notification (nudging) — phase two: the same <code>bobsay</code>/CHANNEL path, just fired from a cron job.</p>
+  </div>
+
+  <div class="scen">
+    <p class="eyebrow" style="color: var(--teal)">S/C · affinity · back to an older session</p>
+    <p class="quote">"What happened to this morning's mac-configuration run?"</p>
+    <p class="setup">Started from a terminal this morning (via <code>omnigent claude</code>, so the pool sees it). Other sessions have spoken since; its process may already be stopped — doesn't matter: a sleeping session is addressable.</p>
+    <div class="steps">
+      <span class="step-actor a-voice">PTT</span><span class="step-text">Voice → text.</span><span class="step-time">~1–2 s</span>
+      <span class="step-actor a-ctrl">ROUTER</span><span class="step-text">The most recent interaction doesn't match, but the pool titles + spoken lines contain the mac-configuration run → <code>{action: continue, session: …}</code>. Beyond the candidate window it would take a <code>lookup_ledger</code> round first, and the continue would be tagged <code>reachback</code>.</span><span class="step-time">~4 s<br>(+4 s if the ledger is searched)</span>
+      <span class="step-actor">SESSION</span><span class="step-text">If asleep, the POST revives it (non-sticky stop) — and it answers from its full morning context.</span><span class="step-time">4.1 s measured<br>+ summary</span>
+      <span class="step-actor a-voice">BOBSAY</span><span class="step-text">"31 of 34 items done. Three wait for you: the Time Machine target drive, two license keys, and Screen Time needs a manual switch."</span><span class="step-time">+2 s</span>
+    </div>
+    <p class="note">The same path reaches arbitrarily far back — explicit reach-back has no horizon (real precedent: returning to a July session to provenance-check a suspicious derived datum). MVP limit: the pool only sees sessions started through Omnigent — hence terminal work is worth starting with <code>omnigent claude</code>.</p>
+  </div>
+
+  <div class="scen">
+    <p class="eyebrow" style="color: var(--amber)">S/D · barge-in · you have heard enough</p>
+    <p class="quote">"Bocs, inkább csak annyit mondj, hogy összesen hány rész volt."</p>
+    <p class="setup">A session is reading out a long answer — twelve series, episode by episode. Somewhere in the second sentence you already know you asked for the wrong thing.</p>
+    <div class="steps">
+      <span class="step-actor a-voice">YOU</span><span class="step-text">Press the chord. That is all — the same gesture that records.</span><span class="step-time">0 s</span>
+      <span class="step-actor a-ctrl">HUSH</span><span class="step-text">Fired before the recorder starts. The pause marker goes down <em>first</em> (or the next queued speech slips through the gap), then the holder is SIGTERMed — the player dies with it, so the room actually goes quiet. What was never heard is appended to <code>interruptions.jsonl</code>, starting at the sentence that was playing: a half-heard sentence counts as unheard.</span><span class="step-time">&lt;1 s</span>
+      <span class="step-actor a-voice">PTT</span><span class="step-text">Records while you speak. Nothing else may play — a queued answer from another session waits.</span><span class="step-time">your pace</span>
+      <span class="step-actor a-ctrl">ROUTER</span><span class="step-text">Sees a <em>fresh</em> barge-in (inside the follow-up window, newer than the last dispatch, to a session still in the pool) and is told to strongly prefer continuing that session — unless the utterance clearly addresses something else. The dispatched message carries a bracketed note naming where the cut fell.</span><span class="step-time">~4 s</span>
+      <span class="step-actor a-ctrl">ROUTER</span><span class="step-text">Speaks the ack — exempt from the pause, because the ack is what the pause is waiting for — then lifts the marker in a <code>finally</code>. The ack is expendable; the un-muting is not.</span><span class="step-time">+2 s</span>
+      <span class="step-actor a-voice">BOBSAY</span><span class="step-text">The cut session answers the new question — and, judging from its own answer text, decides whether the unheard half still matters: <em>"Negyven rész."</em> Then the other session's queued message finally plays.</span><span class="step-time">+2 s</span>
+    </div>
+    <p class="note">Esc while holding cancels instead: no dispatch, and <code>bob resume</code> lifts the pause at once, so queued speech does not wait out the marker's 180 s deadline. That deadline exists only so a crashed roundtrip cannot mute the machine — and when it fires, it says so on stderr. Design: <code>voice-barge-in-plan.md</code>.</p>
+  </div>
+
+  <figure class="breakout">
+    <div class="diagram-scroll">
+    <svg viewBox="0 0 1180 250" role="img" aria-label="The barge-in timeline: the press hushes what is playing and pauses the queue; the person speaks; the router decides and speaks its acknowledgement, which is exempt from the pause; the acknowledgement lifts the pause and the queue flows again.">
+      <defs>
+        <marker id="bargeArr" markerWidth="9" markerHeight="8" refX="8" refY="4" orient="auto">
+          <polygon points="0,0.5 8,4 0,7.5" style="fill: var(--muted)"></polygon>
+        </marker>
+      </defs>
+
+      <rect x="196" y="52" width="700" height="70" rx="8" style="fill: var(--amber-soft); stroke: var(--amber); stroke-dasharray: 4 3; stroke-width: 1"></rect>
+      <text class="lbl lbl-a" x="546" y="42" text-anchor="middle" font-weight="600">the quiet window — nothing else may start speaking</text>
+
+      <line class="fl-n" x1="40" y1="100" x2="1150" y2="100" marker-end="url(#bargeArr)"></line>
+
+      <circle cx="110" cy="100" r="6" style="fill: var(--amber)"></circle>
+      <text class="lbl lbl-a" x="110" y="88" text-anchor="middle" font-weight="600">answer playing</text>
+      <text class="lbl t-sub" x="110" y="142" text-anchor="middle">one ledger line</text>
+      <text class="lbl t-sub" x="110" y="156" text-anchor="middle">per sentence heard</text>
+
+      <circle cx="300" cy="100" r="6" style="fill: var(--amber)"></circle>
+      <text class="lbl lbl-a" x="300" y="88" text-anchor="middle" font-weight="600">PRESS → hush</text>
+      <text class="lbl t-sub" x="300" y="142" text-anchor="middle">marker down first,</text>
+      <text class="lbl t-sub" x="300" y="156" text-anchor="middle">then SIGTERM</text>
+      <text class="lbl t-sub" x="300" y="170" text-anchor="middle">the unheard half saved</text>
+
+      <circle cx="546" cy="100" r="6" style="fill: var(--muted)"></circle>
+      <text class="lbl" x="546" y="88" text-anchor="middle" font-weight="600">you speak</text>
+      <text class="lbl t-sub" x="546" y="142" text-anchor="middle">another session's queued</text>
+      <text class="lbl t-sub" x="546" y="156" text-anchor="middle">answer waits its turn</text>
+
+      <circle cx="780" cy="100" r="6" style="fill: var(--teal)"></circle>
+      <text class="lbl lbl-t" x="780" y="88" text-anchor="middle" font-weight="600">router decides</text>
+      <text class="lbl t-sub" x="780" y="142" text-anchor="middle">biased to the cut session;</text>
+      <text class="lbl t-sub" x="780" y="156" text-anchor="middle">the message names the cut</text>
+
+      <circle cx="960" cy="100" r="6" style="fill: var(--teal)"></circle>
+      <text class="lbl lbl-t" x="960" y="88" text-anchor="middle" font-weight="600">ack — exempt</text>
+      <text class="lbl t-sub" x="960" y="142" text-anchor="middle">speaks through it,</text>
+      <text class="lbl t-sub" x="960" y="156" text-anchor="middle">then lifts it</text>
+
+      <circle cx="1100" cy="100" r="6" style="fill: var(--amber)"></circle>
+      <text class="lbl lbl-a" x="1100" y="88" text-anchor="middle" font-weight="600">queue flows</text>
+      <text class="lbl t-sub" x="1100" y="142" text-anchor="middle">the waiting answer</text>
+      <text class="lbl t-sub" x="1100" y="156" text-anchor="middle">plays, in order</text>
+
+      <text class="lbl t-sub" x="40" y="206" font-weight="600">If the roundtrip never gets there:</text>
+      <text class="lbl t-sub" x="40" y="224">Esc cancels the take and <tspan font-weight="600">bob resume</tspan> lifts the pause at once · a take too quiet to transcribe lifts it too · and if even that fails,</text>
+      <text class="lbl t-sub" x="40" y="238">the marker's own 180 s deadline expires — loudly, on stderr. Every path that opens the window owes it a closer; the deadline is the net, not the plan.</text>
+    </svg>
+    </div>
+    <figcaption>The barge-in in time. Two orderings are load-bearing and both were learned the hard way: the pause marker goes down <em>before</em> the kill (a killed holder releases its ticket instantly, and the next waiter polls every 25 ms), and the acknowledgement <em>overtakes</em> the queue it is about to release (it always arrives after the speech the window is holding back, so plain FIFO deadlocks it behind exactly that).</figcaption>
+  </figure>
+</section>
+
+<section>
+  <p class="eyebrow">4 · detail</p>
+  <h2>How the <code>bob route</code> CLI works</h2>
+  <p>A per-invocation command with file-based state — the D9 four layers. No watching process: it doesn't even follow SSE, because speaking the result is the session's job (<code>bobsay</code>).</p>
+
+  <div class="pipeline">
+    <span class="stage"><b>1 · INPUT</b>text from the channel</span><span class="arr">→</span>
+    <span class="stage"><b>2 · CONTEXT</b>pool · both logs · project dirs</span><span class="arr">→</span>
+    <span class="stage"><b>3 · DECISION</b>llmp claude -p → JSON</span><span class="arr">→</span>
+    <span class="stage"><b>4 · VALIDATE</b>does the target exist?</span><span class="arr">→</span>
+    <span class="stage"><b>5 · EXECUTION</b>Omnigent REST</span><span class="arr">→</span>
+    <span class="stage"><b>6 · ACK</b>speak, log, exit</span>
+  </div>
+  <p class="muted" style="font-size: 14px">Stage 3 may run up to three times: the model can ask once for a transcript peek and once for a ledger reach-back. A second reach-back request becomes the deterministic fallback — it is asking for context it has already been given. A second "torn" answer is different: it buys no further peek, but the decision it arrived with is validated and stands, because it is a usable answer rather than a request. Stage 4 is separate from the schema on purpose — a decision can be perfectly well-formed and still name a session that does not exist. It caught exactly that on the first live run.</p>
+
+  <h3>Routing signals — three tiers, no new maintained metadata</h3>
+  <div class="tbl-scroll">
+  <table>
+    <tr><th>Tier</th><th>Source</th><th>Why it's cheap</th></tr>
+    <tr><td>1 · pool metadata</td><td><code>GET /v1/sessions</code>: server-generated title, workspace, status (running/idle/<em>waiting</em> — a session waiting on a question is a likely target of "yes, do it"), recency</td><td>discovered, platform-maintained — zero own machinery</td></tr>
+    <tr><td>2 · the two event logs</td><td><code>bobsay</code> appends session id + spoken line after every playback; the router appends every decision with its dispatch target. Recency is derived from both at read time — <strong>no pointer file</strong>.</td><td>byproduct of speaking and of routing; the spoken sentence is exactly router-prompt-sized, and a derived value cannot go stale</td></tr>
+    <tr><td>3 · targeted peek</td><td>only when the model says it is torn: the <em>end</em> of both transcripts (<code>order=desc</code>), fetched once</td><td>on demand, over a shortlist of two — never a corpus grep per utterance</td></tr>
+    <tr><td>+ reach-back</td><td>the model asks for it by name (<code>lookup_ledger</code>): the full spoken ledger, every day, scored by how much of the query a line covers</td><td>only when the utterance refers to work the candidate window has hidden — the one path with no time horizon</td></tr>
+  </table>
+  </div>
+  <p class="muted" style="font-size: 14px">Hardening trigger pre-registered (R-4): if tier 3 becomes frequent or slow, an FTS index over transcript extracts — born with a <code>reindex</code> regenerator.</p>
+
+  <h3>The decision output</h3>
+  <p>A <strong>discriminated union</strong>, not one object with optional fields — so a decision that is structurally valid but impossible to carry out cannot be expressed in the first place. There is no shape in which <code>continue</code> exists without a session id.</p>
+  <pre><code>{"action":"continue", "session_id":"…", "request":"…", "ack":"…"}
+{"action":"new",      "cwd":"~/dev/podcast-ingest", "request":"…", "ack":"…"}
+{"action":"clarify",  "question":"…"}
+{"action":"lookup_ledger", "query":"…"}   <span class="cm">// reach-back: grep the whole ledger, ask again</span>
+
+<span class="cm">// any of the first three may add:</span>
+"candidates": [{"session_id":"…", "reason":"…"}]   <span class="cm">// torn → peek at those two</span></code></pre>
+  <p>One headless call produces it — <code>llmp claude -p</code>, stripped to the bone with <code>--setting-sources ""</code>, <code>--allowed-tools ""</code> and <code>--strict-mcp-config</code>: <strong>2,548 input tokens instead of 45,914</strong>, and no personal CLAUDE.md competing with a strict JSON contract. This call thinks; it does not act. The deliberation order is fixed in the prompt, and every decision lands in a JSONL log — auditable why it routed where.</p>
+  <p class="muted" style="font-size: 14px"><strong>Nothing here can crash into silence.</strong> A model that times out, answers nonsense, names a session that does not exist, or a dispatch that fails — all land on the same deterministic fallback: a spoken question, logged with its reason, exit 0. Never a guess.</p>
+
+  <h3>The deliberation order</h3>
+  <div class="tbl-scroll">
+  <table>
+    <tr><th>#</th><th>Question</th><th>Signal</th><th>Decision</th></tr>
+    <tr><td>1</td><td>affinity</td><td>follow-up phrasing + the most recent interaction inside the window</td><td><code>continue</code> there <span class="muted">(S/B)</span></td></tr>
+    <tr><td>2</td><td>affinity</td><td>content match with pool titles / spoken lines</td><td><code>continue</code> there — wakes sleepers too <span class="muted">(S/C)</span></td></tr>
+    <tr><td>3</td><td>affinity</td><td>torn between two candidates</td><td>peek at the <em>end</em> of both transcripts, then decide — once per utterance</td></tr>
+    <tr><td>4</td><td>affinity</td><td>refers to past work, no candidate matches</td><td><code>lookup_ledger</code> — grep the whole ledger, no horizon, then decide — once per utterance</td></tr>
+    <tr><td>5</td><td>placement</td><td>the request names or implies a project</td><td><code>new</code> session in <code>~/dev/&lt;name&gt;</code> <span class="muted">(S/A)</span></td></tr>
+    <tr><td>6</td><td>placement</td><td>no concrete place</td><td><code>new</code> session in home — the skill layer resolves intent</td></tr>
+    <tr><td>7</td><td>—</td><td>uninterpretable</td><td><code>clarify</code> — asks back in voice, never guesses</td></tr>
+  </table>
+  </div>
+
+  <h3>The other half: <code>bobsay</code></h3>
+  <p>A tiny CLI that sessions call (allowlist: <code>Bash(bobsay:*)</code>): clean-for-speech (markdown out) → prosody (emphasis, pauses) → ElevenLabs with the requested voice (fallback: macOS <code>say</code>) → serialized playback (lock, so sessions don't talk over each other) → a <strong>log line</strong> into the daily <code>spoken/*.jsonl</code>. The log plays three roles: recency source (who spoke last — derived at read time, no pointer file) · routing metadata · searchable chronicle. The sessions' prompt convention asks for the one-sentence speakable summary; if silent finishes recur, the responsibility moves into a Claude Code Stop hook (the PAI-proven pattern).</p>
+
+  <h3>D9 compliance</h3>
+  <div class="tbl-scroll">
+  <table>
+    <tr><th>Layer</th><th>Concretely here</th></tr>
+    <tr><td>Data</td><td><code>defaults.yaml</code> · <code>spoken/*.jsonl</code> · <code>logs/route-decisions.jsonl</code> · <code>logs/gc.jsonl</code> · <code>logs/interruptions.jsonl</code> — files in <code>~/bob</code>. The ledgers are deliberately <em>not</em> git-versioned (2026-08-19): a log is already the chronological record, and the repo has a remote now, so only the authored files (<code>CLAUDE.md</code>, <code>defaults.yaml</code>) are tracked; the transcripts are backed up as files. Reach-backs are a <em>flag</em> on decisions, not a fourth log.</td></tr>
+    <tr><td>CLI</td><td><code>bob route · doctor · log · gc</code> and <code>bobsay</code> — deterministic, <code>--json</code> throughout, uniform exit codes (0 done · 1 could not · 2 wrong call)</td></tr>
+    <tr><td>Client</td><td>Hammerspoon PTT (hold-to-talk → <code>bob dictate</code>), with the Raycast script + Monologue as typed fallback; later CHANNEL (Telegram) over the same CLI</td></tr>
+    <tr><td>Headless</td><td>the router's decision call (<code>claude -p</code> — through llmp when present — capable model first, isolated from personal settings)</td></tr>
+  </table>
+  </div>
+</section>
+
+<section>
+  <p class="eyebrow">5 · lifecycle</p>
+  <h2>When do we "close" a session? — Almost never</h2>
+  <p>The key primitive, spike-verified: Omnigent's stop is <strong>non-sticky</strong> — the process dies, the conversation survives, and the next message relaunches automatically. "Closing" is therefore not a hard state but two cheap, reversible moves.</p>
+
+  <div class="pipeline">
+    <span class="stage"><b>RUNNING</b>process alive, answers instantly</span><span class="arr">→ bob gc: idle &gt; a few hours →</span>
+    <span class="stage"><b>ASLEEP</b>no process, RAM freed</span><span class="arr">→ one message (4.1 s measured) →</span>
+    <span class="stage"><b>RUNNING</b>revives with full context</span>
+  </div>
+  <p class="muted" style="font-size: 14px">Verified on a real sweep, not on the spike's word for it: <code>bob gc</code> stopped five idle sessions, a message revived one in <strong>4.1 s</strong> with its transcript intact, and S/C then reached a gc-stopped session by content alone and got an answer from its full context.</p>
+
+  <ul class="open-list">
+    <li><strong>Stop processes freely, on an hourly scale</strong> — a deterministic <code>bob gc</code> (launchd daily or manual); since revival is a few seconds, aggressive stopping is risk-free hygiene. <strong>It stops and never deletes</strong>, and that asymmetry is the whole safety argument: a wrong stop costs four seconds, a wrong delete costs the record a reach-back might want in July. Sessions that are <code>running</code> or <code>waiting</code> are never touched however long they have been at it — a long task is not idle, and a session parked on a question is waiting for a person.</li>
+    <li><strong>No "archived" state needed</strong> — the router's candidate window is a query filter (activity in the last X days), no flag to flip. DELETE stays an explicit, manual act.</li>
+    <li><strong>Explicit reach-back has no horizon</strong> — transcripts are forever; the daily spoken log is the ledger for finding a session ("that Tuesday show-notes session" → grep → id → POST).</li>
+    <li><strong>A reach-back is also a signal</strong>, diagnosing two different things: <em>(a) value stranded in a transcript</em> that per D9 should have been produced into files — <code>bob</code> logs reach-backs, and a recurring pattern is a hardening trigger; <em>(b) provenance check</em> — legitimate use: the transcript is the audit trail of agent work (the git-history analogue), no limit warranted.</li>
+    <li><strong>Resurrect to continue work; read the log to remember</strong> — "what happened back then" gets a fresh session + a log extract, not a month-old context dragged back to life.</li>
+  </ul>
+</section>
+
+<section>
+  <p class="eyebrow">6 · decisions · closed 2026-08-15 (D10)</p>
+  <h2>The four open questions — decided</h2>
+  <ol class="open-list">
+    <li><strong>STT: Raycast + Monologue</strong> ✓ — MVP-1 has zero STT code: a Raycast prompt you dictate into with Monologue; submit calls <code>bob route</code>. MVP-2 (when it chafes): own PTT — <em>built 2026-08-16</em> as Hammerspoon hold-to-talk + ElevenLabs Scribe (the key already in the Keychain; Whisper would have needed an account the machine lacks).</li>
+    <li><strong>Approvals: MVP scope suffices</strong> ✓ — Omnigent desktop-app OS notifications + Inbox; the proper path (Telegram buttons over the resolve API + own approval log) arrives with CHANNEL.</li>
+    <li><strong>Governance: documented</strong> ✓ — the decisions and rules behind this design live in the author's private planning notes; the README and <code>src/contracts/README.md</code> carry their essential sentences.</li>
+    <li><strong>Roadmap: Phase 1.5</strong> ✓ — before Phase 2 (email), with an exit criterion: one week of real use, daily voice requests, at least one voice return to an older session.</li>
+  </ol>
+</section>
+
+<section>
+  <p class="eyebrow">7 · as built · 2026-08-15</p>
+  <h2>What the building changed</h2>
+  <p>Four things the design had right in spirit and wrong in detail. Each was found by something running, not by re-reading the plan — and in each case the design was corrected rather than the implementation bent around it.</p>
+
+  <div class="decisions">
+    <div class="card">
+      <span class="tag">caught by the executability check</span>
+      <h3>A vocabulary without its resolution rule</h3>
+      <p>The prompt listed project <em>names</em>; the only absolute path in sight was the home directory, so the model composed <code>&lt;home&gt;/hey-bob</code>. No session was born in the wrong place — the check caught it and the fallback spoke. The prompt now states the root and the exact shape <code>&lt;root&gt;/&lt;name&gt;</code>.</p>
+    </div>
+    <div class="card">
+      <span class="tag">caught by the live regression table</span>
+      <h3>A query is a paraphrase, not a quotation</h3>
+      <p>A reach-back failed although the model <em>did</em> ask to search: it queried "conference badge printing July" against a line containing everything but "July", and the grep demanded every word. Ledger search now scores partial matches and ranks by coverage.</p>
+    </div>
+    <div class="card">
+      <span class="tag">caught by running it from Raycast</span>
+      <h3>Inherited environment belongs to the launcher</h3>
+      <p>"Spawned sessions inherit the machine's auth chain" holds for what the <em>host daemon</em> spawns. Launched from Raycast or launchd, plain <code>claude</code> is simply not logged in — so the first utterance from there fell back, and deterministically so would every one after: there are no credentials to retry with. The router now uses <code>llmp claude</code>, which carries its own credentials.</p>
+    </div>
+    <div class="card">
+      <span class="tag">the lesson under that one</span>
+      <h3>Graceful degradation needs a loud counterpart</h3>
+      <p>The worse half was that it failed <em>quietly</em>: the deterministic fallback is built not to shout, so the bridge degraded politely and nothing surfaced until someone read the log. <code>bob doctor</code> now exercises the real decision call — the failure appears at the check instead of at the microphone.</p>
+    </div>
+  </div>
+
+  <h3>Deliberate deviations from the plan</h3>
+  <div class="tbl-scroll">
+  <table>
+    <tr><th>Change</th><th>Why it was unavoidable</th></tr>
+    <tr><td>Decision log gains <code>target_session_id</code></td><td>The recency derivation needs to know <em>who</em> a dispatch reached. For a <code>new</code> decision that session does not exist until the API answers, so it cannot be read off the decision — it has to be written down.</td></tr>
+    <tr><td>The ack is spoken in-process</td><td>Same <code>speak()</code> code, same playback lock, same ledger, one less process spawn. Still sessionless, so the recency derivation ignores it.</td></tr>
+    <tr><td><code>~/dev</code> stayed a constant</td><td>C3's fields are enumerated in the plan and this is not one of them. Making it configurable would be a contract change, not a convenience.</td></tr>
+    <tr><td><code>bob doctor</code> grew to eight checks</td><td>Config, C6 convention, server, loopback bind, host daemon, agent, the router's own call, and a full spawn round trip in a throwaway session it deletes afterwards.</td></tr>
+  </table>
+  </div>
+
+  <h3>Acceptance run — measured, not hoped for</h3>
+  <p class="muted" style="font-size: 14px">Run through the Raycast script in a bare environment — the script leg, entered as text. The hotkey-and-dictation leg in front of it is the one part still unexercised, because it belongs to the owner.</p>
+  <div class="tbl-scroll">
+  <table>
+    <tr><th>Step</th><th>Result</th><th>Measured</th><th>Target</th></tr>
+    <tr><td>S/A</td><td>new session in <code>~/dev/website</code>, spoke its own answer</td><td>ack <strong>7.4 s</strong>, result +16 s</td><td>ack ≤ ~5 s</td></tr>
+    <tr><td>S/B</td><td>continued that session; it resolved "those" from its own context</td><td><strong>17.1 s</strong> to speech</td><td>≤ ~10 s</td></tr>
+    <tr><td>S/C</td><td>revived a gc-stopped session by content, answered from full context</td><td><strong>28.6 s</strong> to speech</td><td>≤ ~10 s</td></tr>
+    <tr><td>nonsense</td><td>spoken question, pool untouched (8 → 8 sessions)</td><td>—</td><td>—</td></tr>
+  </table>
+  </div>
+  <p>The targets are missed and the breakdown says why: of the ~7 s acknowledgement, roughly 4 s is the routing decision, 2 s is actually speaking the sentence (playback is awaited on purpose, so the ledger can never claim something that was not heard), and ~1 s is process start. S/B and S/C are dominated by the session's own turn. <strong>This is exactly the evidence D10 deferred the model tier to</strong> — <code>router_model</code> started capable deliberately, and a faster tier would take ~4 s out of every acknowledgement. A week of decision-log data decides it, not one afternoon.</p>
+</section>
+
+<section>
+  <p class="eyebrow">8 · as built · barge-in · 2026-08-18/19</p>
+  <h2>Six defects, and what caught each</h2>
+  <p>The barge-in went in as five increments, each verified before the next. Nothing below was found by re-reading the plan; every one was found by something running, and two of them only by a person's ears. They share a shape worth carrying forward: <strong>every signal this feature sends lands somewhere as a fact about the world, and the receiver acts on it.</strong></p>
+
+  <div class="decisions">
+    <div class="card">
+      <span class="tag">caught by a test loop, 3 of 15 runs</span>
+      <h3>A FIFO that could seat two</h3>
+      <p>Two tickets minted in the same millisecond sort by pid, and pid order is not arrival order — so a later ticket could sort ahead of one already playing, and both judged themselves holder. Pre-existing, invisible until playback got busy enough. The queue now decides who may <em>try</em>; an exclusive-create marker decides who <em>holds</em>.</p>
+    </div>
+    <div class="card">
+      <span class="tag">caught by a live spawn, three layers away</span>
+      <h3>A convention that outgrew its launch arg</h3>
+      <p>An amendment took the C6 text past Omnigent's 4,096-character limit for a <code>terminal_launch_args</code> entry. Every <code>createSession</code> came back 400, the router fell back, and a perfectly clear spoken request was answered with "I did not understand". Now the ceiling and a budget below it are constants, a test fails while the sentence is still in the editor, and <code>bob doctor</code> reports the length.</p>
+    </div>
+    <div class="card">
+      <span class="tag">caught by the scripted smoke</span>
+      <h3>A pause written one step too late</h3>
+      <p>The marker went down after the kill, as the plan sketched — but a killed holder releases its ticket instantly and the next waiter polls every 25 ms. Four seconds of another session's queued speech drove through that gap, over the person mid-press. The window runs from the press, so it goes down before anything is killed.</p>
+    </div>
+    <div class="card">
+      <span class="tag">caught by the first real press</span>
+      <h3>An exemption that deadlocked</h3>
+      <p>The ack may speak through the quiet window — but it always <em>arrives</em> after the speech the window is holding back, so plain FIFO put it behind a ticket that could not move until the window lifted, and the window lifts only once the ack is spoken. Three minutes of silence, ended by the safety deadline. The exempt ticket now overtakes the queue it exists to release; the atomic marker was always the real exclusion, so nothing overlaps.</p>
+    </div>
+    <div class="card">
+      <span class="tag">caught by a 0.88 s press</span>
+      <h3>A window nobody closed</h3>
+      <p>A take too quiet to transcribe returned before <code>route</code> ever ran — so nothing lifted the pause the press had opened, and the queue stayed muted for the marker's full three minutes. Every non-routing path now lifts it, and the dispatch script fires <code>bob resume</code> after <code>dictate</code> returns. <strong>Whoever opens the quiet window owes it a closer on every path; a deadline is a safety net, not a closer.</strong></p>
+    </div>
+    <div class="card">
+      <span class="tag">caught in the wild, by ear</span>
+      <h3>An interruption that read as a failure</h3>
+      <p>The cut <code>bobsay</code> died by SIGTERM, so the session saw exit 143 — a failed command — and did the sensible thing: it ran it again, in full, five seconds later, before the follow-up had even arrived. What the person heard as "it started reading the list again" was a retry. A deliberate interruption now exits <strong>0</strong> and says so, because 0 is the strongest "do not retry" an agent understands.</p>
+    </div>
+  </div>
+
+  <h3>What the plan itself gained</h3>
+  <div class="tbl-scroll">
+  <table>
+    <tr><th>Change</th><th>Why</th></tr>
+    <tr><td>Sentence chunking landed <em>early</em>, not last</td><td>The C6 convention makes most answers a single <code>bobsay</code> call, so call-level precision would report "nothing was heard" on nearly every barge-in — the cut-point metadata would be worthless exactly where it matters most.</td></tr>
+    <tr><td>The clip's own dead air had to go</td><td>With stitching in place a small gap remained between sentences; measurement put it inside the audio — 0.28–1.12 s of trailing silence per clip, ended by a codec blip that defeats the one-pass trim. Two deterministic ffmpeg passes now cut it, keeping a short breath.</td></tr>
+    <tr><td>An exchange that reached no session lost its id</td><td>The prompt offered <code>[xN]</code> ids for every exchange while the contract accepted only dispatched ones — so a request repeated after a clarify read as a correction <em>of</em> that clarify, was refused, and produced another clarify. Never offer an address that cannot be used.</td></tr>
+    <tr><td><code>bob doctor</code> grew to ten checks</td><td>The two additions are the quiet window (a pause past its deadline is a failure, naming <code>bob resume</code>) and the C6 length budget.</td></tr>
+  </table>
+  </div>
+</section>
+
+<footer>
+  Visual companion — the words live in the repo README and <code>src/contracts/README.md</code>. Built M0–M6 on 2026-08-15, barge-in M0–M4 on 2026-08-18/19; the code is this repo (see the README for setup from zero), the state home is <code>~/bob</code>. Spike numbers from 2026-08-14: warm loop 2–3 s, fresh yolo session first answer ~3 s; the 117 s once mistaken for cold start was approval wait. Pinned platform: Omnigent 0.10.0.dev0 (<code>c4dd03c4</code>). Build plan and its findings: <code>voice-bridge-implementation-plan.md</code>.
+</footer>
+</div>

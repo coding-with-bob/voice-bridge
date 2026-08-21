@@ -17,6 +17,11 @@ Omnigent's own server and host daemon, and they are acceptable precisely because
 loopback only, which is why `bob doctor` re-verifies the bind on every run instead of trusting
 the config file that asked for it.
 
+**The picture page.** [`docs/voice-bridge-visual.html`](docs/voice-bridge-visual.html) is the
+whole design on one page — the pieces, the routing walk-throughs, the barge-in — drawn rather
+than written. GitHub shows its source; open it in a browser
+(`open docs/voice-bridge-visual.html` from the clone).
+
 ---
 
 ## Setup from zero
